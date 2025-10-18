@@ -14,6 +14,7 @@ proj3.cpp
 #include <netinet/udp.h> 
 #include <netinet/tcp.h> 
 #include <unordered_map>
+#include <vector>
 
 #define ARG_PACKET_PRINT 0x1
 #define ARG_NET_FLOW 0x2
@@ -29,6 +30,10 @@ proj3.cpp
 #define UDP_HDR_SIZE 8
 #define TCP_MIN_SIZE 20
 #define DOFF_OFFSET 4
+#define IPv4_SIZE 4
+#define BYTE_SIZE 8
+#define MASK 0xFF
+#define U_SEC_CONV_FACTOR 1000000.0
 
 
 unsigned short cmd_line_flags = 0;
@@ -140,12 +145,15 @@ Each packet will produce a single line of output, as follows:
 ts sip sport dip dport iplen protocol thlen paylen seqno ackno
 dont print packets that dont have UDP or TCP as their transport prot
 */
-void packet_print(FILE* fptr) {
+std::vector<packet> get_packets(FILE* fptr) {
+    std::vector<packet> packets;
     struct packet pkt;
 
     pkt.ip_hdr = nullptr;
     pkt.udp_hdr = nullptr;
     pkt.tcp_hdr = nullptr;
+
+    bool ignore = false;
 
     while(fread(&pkt, 1, MIN_PKT_SIZE, fptr) == MIN_PKT_SIZE) {
         //first i need to look at the ip header and see if its ipv4 so that ill know whether or not to keep going
@@ -202,15 +210,38 @@ void packet_print(FILE* fptr) {
                     }
                     
                     //kms kms kms 
-                    u_int8_t* end_of_tcp = (u_int8_t*) pkt.tcp_hdr + 20;
+                    u_int8_t* end_of_tcp = (u_int8_t*) pkt.tcp_hdr + TCP_MIN_SIZE;
                     fread(end_of_tcp, 1, rem_length, fptr);
                 }
             }
-            
+            else {
+                ignore = true;
+            } 
         }
-
+        else {
+            ignore = true;
+        }
+        if (!ignore) {
+            packets.push_back(pkt); 
+        }
     }
+    return packets;
+}
 
+//Prints ipaddr in dotted quad with a space at the end
+void print_ip(uint32_t ipaddr) {
+    for (int i = IPv4_SIZE - 1; i >= 0; i--) {
+        fprintf(stdout, "%u", ((ipaddr >> (BYTE_SIZE*i)) & MASK));
+        fprintf(stdout, i == 0 ? " " : ".");
+    }
+}
+
+void packet_print(FILE* fptr) {
+    std::vector<packet> packets = get_packets(fptr);
+
+    for (packet pkt : packets) {
+        fprintf(stdout, "%.6f ", (double)(ntohl(pkt.sec_net)) + ((double)(ntohl(pkt.usec_net)) / U_SEC_CONV_FACTOR));
+    }
 }
 
 int main(int argc, char* argv[]) {
