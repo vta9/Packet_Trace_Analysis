@@ -22,6 +22,9 @@ proj3.cpp
 unsigned short cmd_line_flags = 0;
 char* trace_file_name = NULL;
 
+//Type all output functions 
+typedef void (*Out_Function)(FILE*);
+
 //Adds arg to cmd_line_flags unless it was already given 
 void set_arg(unsigned short arg, char option) {
     if (cmd_line_flags & arg) {
@@ -98,6 +101,23 @@ FILE *open_file(const char* file_name) {
     return fptr;
 }
 
+//Wrapper function for output functoins 
+void run_w_file(Out_Function func, const char* file_name) {
+    FILE* fptr = open_file(file_name);
+    func(fptr);
+    fclose(fptr);
+}
+
+//Runs packet print mode 
+/*
+Each packet will produce a single line of output, as follows:
+ts sip sport dip dport iplen protocol thlen paylen seqno ackno
+dont print packets that dont have UDP or TCP as their transport prot
+*/
+void packet_print(FILE* fptr) {
+
+}
+
 int main(int argc, char* argv[]) {
     parseargs(argc, argv);
     validate_arguments();
@@ -105,6 +125,7 @@ int main(int argc, char* argv[]) {
     //send valid args to methods
     if (cmd_line_flags == (ARG_PACKET_PRINT | ARG_TRACE_FILE)) {
         fprintf(stdout, "print %s\n", trace_file_name);
+        run_w_file(packet_print, trace_file_name);
     }
     else if (cmd_line_flags == (ARG_RTT | ARG_TRACE_FILE)) {
         fprintf(stdout, "rtt %s\n", trace_file_name);
