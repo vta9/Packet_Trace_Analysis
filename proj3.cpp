@@ -9,7 +9,10 @@ proj3.cpp
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <net/ethernet.h> 
 #include <netinet/ip.h> 
+#include <netinet/udp.h> 
+#include <netinet/tcp.h> 
 #include <unordered_map>
 
 #define ARG_PACKET_PRINT 0x1
@@ -18,12 +21,26 @@ proj3.cpp
 #define ARG_TRACE_FILE 0x10
 
 #define DNE -1
+#define MIN_PKT_SIZE 22
 
 unsigned short cmd_line_flags = 0;
 char* trace_file_name = NULL;
 
 //Type all output functions 
 typedef void (*Out_Function)(FILE*);
+
+//Defines a packet from trace file 
+struct packet{
+    //Garunteed to exist 
+    uint32_t sec_net;
+    uint32_t usec_net; 
+    struct ether_header ethernet_hdr;
+
+    //May or may not point to real headers
+    struct iphdr ip_hdr;
+    struct udphdr udp_hdr;
+    struct tcphdr tcp_hdr;
+};
 
 //Adds arg to cmd_line_flags unless it was already given 
 void set_arg(unsigned short arg, char option) {
@@ -115,6 +132,8 @@ ts sip sport dip dport iplen protocol thlen paylen seqno ackno
 dont print packets that dont have UDP or TCP as their transport prot
 */
 void packet_print(FILE* fptr) {
+    struct packet pkt;
+    
 
 }
 
