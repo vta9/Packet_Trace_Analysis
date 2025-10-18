@@ -4,12 +4,12 @@ LD=gcc
 CFLAGS=-Wall -Werror -g
 LDFLAGS=$(CFLAGS)
 
-TARGETS=proj1
+TARGETS=proj3
 
 all: $(TARGETS)
 
-proj1: proj1.o
-	$(CC) $(CFLAGS) -o $@ $< 
+proj3: proj3.o
+	$(CXX) $(CFLAGS) -o $@ $< 
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<
