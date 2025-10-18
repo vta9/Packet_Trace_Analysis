@@ -34,6 +34,7 @@ proj3.cpp
 #define BYTE_SIZE 8
 #define MASK 0xFF
 #define U_SEC_CONV_FACTOR 1000000.0
+#define TH_ACK        0x10
 
 
 unsigned short cmd_line_flags = 0;
@@ -241,6 +242,28 @@ void packet_print(FILE* fptr) {
 
     for (packet pkt : packets) {
         fprintf(stdout, "%.6f ", (double)(ntohl(pkt.sec_net)) + ((double)(ntohl(pkt.usec_net)) / U_SEC_CONV_FACTOR));
+        print_ip(ntohl(pkt.ip_hdr->saddr));
+        fprintf(stdout, "%d ", pkt.udp_hdr == nullptr ? ntohs(pkt.tcp_hdr->th_sport) : ntohs(pkt.udp_hdr->uh_sport));
+        print_ip(ntohl(pkt.ip_hdr->daddr));
+        fprintf(stdout, "%d ", pkt.udp_hdr == nullptr ? ntohs(pkt.tcp_hdr->th_dport) : ntohs(pkt.udp_hdr->uh_dport));
+        fprintf(stdout, "%u ", ntohs(pkt.ip_hdr->tot_len));
+        fprintf(stdout, pkt.udp_hdr == nullptr ? "T " : "U ");
+        u_int transport_hdr_size = pkt.udp_hdr == nullptr ? ((DOFF_OFFSET*pkt.tcp_hdr->th_off)+TCP_MIN_SIZE) : UDP_HDR_SIZE;
+        fprintf(stdout, "%u ", transport_hdr_size);
+        u_int paylen = ntohs(pkt.ip_hdr->tot_len) - transport_hdr_size - IPV4_HDR_SIZE;
+        fprintf(stdout, "%u ", paylen);
+        if (pkt.tcp_hdr == nullptr) {
+            fprintf(stdout, "- ");
+        }
+        else {
+            fprintf(stdout,"%u ", ntohl(pkt.tcp_hdr->seq));
+        }
+        if (pkt.tcp_hdr == nullptr || (pkt.tcp_hdr->th_flags & TH_ACK) == TH_ACK) {
+            fprintf(stdout, "-\n");
+        }
+        else {
+            fprintf(stdout, "%u\n", ntohl(pkt.tcp_hdr->th_ack));
+        }
     }
 }
 
