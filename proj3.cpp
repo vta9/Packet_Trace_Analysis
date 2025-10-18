@@ -56,6 +56,48 @@ struct packet{
     struct tcphdr *tcp_hdr;
 };
 
+//Defines a 5 tuple flow to be used as key in hash table :D
+struct nf_flow {
+    uint32_t sip;
+    uint32_t dip;
+    uint16_t sport;
+    uint16_t dport;
+    char protocol;
+
+    nf_flow() {
+        sip = 0;
+        dip = 0;
+        sport = 0;
+        dport = 0;
+        protocol = '0';
+    }
+
+    bool operator==(const nf_flow &other) const
+  { return (sip == other.sip
+            && dip == other.dip
+            && sport == other.sport
+            && dport == other.dport
+            && protocol = other.protocol);
+  }
+};
+
+//Defines a value of NF entry in hash table
+struct nf_flow_info {
+    timeval first_ts;
+    timeval final_ts;
+    uint tot_pkts;
+    uint tot_payload_bytes;
+
+    nf_flow_info() {
+        first_ts.tv_sec = 0;
+        first_ts.tv_usec = 0;
+        final_ts.tv_sec = 0;
+        final_ts.tv_usec = 0;
+        tot_pkts = 0;
+        tot_payload_bytes = 0;
+    }
+};
+
 //Adds arg to cmd_line_flags unless it was already given 
 void set_arg(unsigned short arg, char option) {
     if (cmd_line_flags & arg) {
@@ -267,6 +309,15 @@ void packet_print(FILE* fptr) {
     }
 }
 
+void netflow(FILE* fptr) {
+    std::vector<packet> packets = get_packets(fptr);
+
+    std::unordered_map<nf_flow, nf_flow_info> flow_table;
+
+
+
+}
+
 int main(int argc, char* argv[]) {
     parseargs(argc, argv);
     validate_arguments();
@@ -279,7 +330,8 @@ int main(int argc, char* argv[]) {
         fprintf(stdout, "rtt %s\n", trace_file_name);
     }
     else if (cmd_line_flags == (ARG_NET_FLOW | ARG_TRACE_FILE)) {
-        fprintf(stdout, "netflow %s\n", trace_file_name);
+        //fprintf(stdout, "netflow %s\n", trace_file_name);
+        run_w_file(netflow, trace_file_name);
     }
     else {
         fprintf(stderr, "error: no valid input given\n");
