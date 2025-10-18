@@ -18,10 +18,18 @@ proj3.cpp
 #define ARG_PACKET_PRINT 0x1
 #define ARG_NET_FLOW 0x2
 #define ARG_RTT 0x4
-#define ARG_TRACE_FILE 0x10
+#define ARG_TRACE_FILE 0x8
 
 #define DNE -1
 #define MIN_PKT_SIZE 22
+#define IPV4_TYPE 0x800
+#define IPV4_HDR_SIZE 20
+#define UDP_PROTOCOL 17
+#define TCP_PROTOCOL 6
+#define UDP_HDR_SIZE 8
+#define TCP_MIN_SIZE 20
+#define DOFF_OFFSET 4
+
 
 unsigned short cmd_line_flags = 0;
 char* trace_file_name = NULL;
@@ -37,9 +45,9 @@ struct packet{
     struct ether_header ethernet_hdr;
 
     //May or may not point to real headers
-    struct iphdr ip_hdr;
-    struct udphdr udp_hdr;
-    struct tcphdr tcp_hdr;
+    struct iphdr *ip_hdr;
+    struct udphdr *udp_hdr;
+    struct tcphdr *tcp_hdr;
 };
 
 //Adds arg to cmd_line_flags unless it was already given 
@@ -125,6 +133,7 @@ void run_w_file(Out_Function func, const char* file_name) {
     fclose(fptr);
 }
 
+
 //Runs packet print mode 
 /*
 Each packet will produce a single line of output, as follows:
@@ -133,7 +142,74 @@ dont print packets that dont have UDP or TCP as their transport prot
 */
 void packet_print(FILE* fptr) {
     struct packet pkt;
-    
+
+    pkt.ip_hdr = nullptr;
+    pkt.udp_hdr = nullptr;
+    pkt.tcp_hdr = nullptr;
+
+    while(fread(&pkt, 1, MIN_PKT_SIZE, fptr) == MIN_PKT_SIZE) {
+        //first i need to look at the ip header and see if its ipv4 so that ill know whether or not to keep going
+        //ill keep the packet stored in network byte order for now, and ntohs it if i need to l8r
+        if (ntohs(pkt.ethernet_hdr.ether_type) == IPV4_TYPE) {
+            //malloc for iphdr pointer 
+            pkt.ip_hdr = (struct iphdr *) malloc(IPV4_HDR_SIZE);
+            //check if malloc worked 
+            if (pkt.ip_hdr == nullptr) {
+                fprintf(stderr, "error: allocation failed\n");
+                exit(1);
+            }
+
+            //next 20 bytes garunteed to be ipv4 header 
+            fread(pkt.ip_hdr, 1, IPV4_HDR_SIZE, fptr);
+            //now check if protocol is udp or tcp 
+            //just 8 bits so dont need to ntohs 
+            if (pkt.ip_hdr->protocol == UDP_PROTOCOL) {
+
+                //malloc for udp hdr pointer 
+                pkt.udp_hdr = (struct udphdr *) malloc(UDP_HDR_SIZE);
+                //check if malloc worked 
+                if (pkt.udp_hdr == nullptr) {
+                    fprintf(stderr, "error: allocation failed\n");
+                    exit(1);
+                }
+
+                fread(pkt.udp_hdr, 1, UDP_HDR_SIZE, fptr);
+            }
+            else if (pkt.ip_hdr->protocol == TCP_PROTOCOL) {
+
+                //malloc for tcp hdr pointer 
+                pkt.tcp_hdr = (struct tcphdr *) malloc(TCP_MIN_SIZE);
+                //check if malloc worked 
+                if (pkt.tcp_hdr == nullptr) {
+                    fprintf(stderr, "error: allocation failed\n");
+                    exit(1);
+                }
+
+                fread(pkt.tcp_hdr, 1, TCP_MIN_SIZE, fptr);
+
+                //multiply offset by 4 to get total length of header 
+                //continue reading total length - 20 bytes of header
+                int rem_length = (pkt.tcp_hdr->doff * DOFF_OFFSET) - TCP_MIN_SIZE;
+
+                if (rem_length > 0) {
+                    //realloc to increase length
+                    //malloc for tcp hdr pointer 
+                    pkt.tcp_hdr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
+                    //check if malloc worked 
+                    if (pkt.tcp_hdr == nullptr) {
+                        fprintf(stderr, "error: allocation failed\n");
+                        exit(1);
+                    }
+                    
+                    //kms kms kms 
+                    u_int8_t* end_of_tcp = (u_int8_t*) pkt.tcp_hdr + 20;
+                    fread(end_of_tcp, 1, rem_length, fptr);
+                }
+            }
+            
+        }
+
+    }
 
 }
 

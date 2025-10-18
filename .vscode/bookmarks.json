@@ -4,7 +4,17 @@
 			"path": "proj3.cpp",
 			"bookmarks": [
 				{
-					"line": 154,
+					"line": 204,
+					"column": 24,
+					"label": ""
+				},
+				{
+					"line": 205,
+					"column": 21,
+					"label": ""
+				},
+				{
+					"line": 230,
 					"column": 10,
 					"label": ""
 				}
