@@ -69,6 +69,11 @@ void parseargs (int argc, char* argv []) {
 }
 
 void validate_arguments() {
+    //check that tracefile was given
+    if((cmd_line_flags & ARG_TRACE_FILE) != ARG_TRACE_FILE || trace_file_name == NULL) {
+        fprintf(stderr, "error: no trace file given\n");
+        exit(1);
+    }
     //check that only one mode is given
     int modes = cmd_line_flags & (ARG_RTT | ARG_PACKET_PRINT | ARG_NET_FLOW);
     if (modes == (ARG_RTT | ARG_PACKET_PRINT | ARG_NET_FLOW) || 
@@ -93,11 +98,23 @@ FILE *open_file(const char* file_name) {
     return fptr;
 }
 
-
 int main(int argc, char* argv[]) {
     parseargs(argc, argv);
     validate_arguments();
-    
 
+    //send valid args to methods
+    if (cmd_line_flags == (ARG_PACKET_PRINT | ARG_TRACE_FILE)) {
+        fprintf(stdout, "print %s\n", trace_file_name);
+    }
+    else if (cmd_line_flags == (ARG_RTT | ARG_TRACE_FILE)) {
+        fprintf(stdout, "rtt %s\n", trace_file_name);
+    }
+    else if (cmd_line_flags == (ARG_NET_FLOW | ARG_TRACE_FILE)) {
+        fprintf(stdout, "netflow %s\n", trace_file_name);
+    }
+    else {
+        fprintf(stderr, "error: no valid input given\n");
+        exit(1);
+    }
 
 }
