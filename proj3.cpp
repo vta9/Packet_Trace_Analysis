@@ -248,7 +248,7 @@ void packet_print(FILE* fptr) {
         fprintf(stdout, "%d ", pkt.udp_hdr == nullptr ? ntohs(pkt.tcp_hdr->th_dport) : ntohs(pkt.udp_hdr->uh_dport));
         fprintf(stdout, "%u ", ntohs(pkt.ip_hdr->tot_len));
         fprintf(stdout, pkt.udp_hdr == nullptr ? "T " : "U ");
-        u_int transport_hdr_size = pkt.udp_hdr == nullptr ? ((DOFF_OFFSET*pkt.tcp_hdr->th_off)+TCP_MIN_SIZE) : UDP_HDR_SIZE;
+        u_int transport_hdr_size = pkt.udp_hdr == nullptr ? ((DOFF_OFFSET*pkt.tcp_hdr->th_off)) : UDP_HDR_SIZE;
         fprintf(stdout, "%u ", transport_hdr_size);
         u_int paylen = ntohs(pkt.ip_hdr->tot_len) - transport_hdr_size - IPV4_HDR_SIZE;
         fprintf(stdout, "%u ", paylen);
@@ -258,7 +258,7 @@ void packet_print(FILE* fptr) {
         else {
             fprintf(stdout,"%u ", ntohl(pkt.tcp_hdr->seq));
         }
-        if (pkt.tcp_hdr == nullptr || (pkt.tcp_hdr->th_flags & TH_ACK) == TH_ACK) {
+        if (pkt.tcp_hdr == nullptr || (pkt.tcp_hdr->th_flags & TH_ACK) != TH_ACK) {
             fprintf(stdout, "-\n");
         }
         else {
@@ -273,7 +273,6 @@ int main(int argc, char* argv[]) {
 
     //send valid args to methods
     if (cmd_line_flags == (ARG_PACKET_PRINT | ARG_TRACE_FILE)) {
-        fprintf(stdout, "print %s\n", trace_file_name);
         run_w_file(packet_print, trace_file_name);
     }
     else if (cmd_line_flags == (ARG_RTT | ARG_TRACE_FILE)) {
