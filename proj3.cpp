@@ -77,6 +77,7 @@ struct ParsedPacket{
 
     u_int transport_hdr_size;
     uint16_t tot_len;
+    u_int paylen;
 
     uint32_t seq;
     uint32_t ack;
@@ -106,6 +107,8 @@ struct ParsedPacket{
             this->ack = ntohl(pkt.tcp_hdr->th_ack);
             this->th_flags = pkt.tcp_hdr->th_flags;
         }
+
+        this->paylen = this->tot_len - this->transport_hdr_size - IPV4_HDR_SIZE;
     }
 
 
@@ -119,20 +122,20 @@ struct NF_Flow {
     uint16_t dport;
     char protocol;
 
-    NF_Flow() {
-        sip = 0;
-        dip = 0;
-        sport = 0;
-        dport = 0;
-        protocol = '0';
-    }
+    // NF_Flow() {
+    //     sip = 0;
+    //     dip = 0;
+    //     sport = 0;
+    //     dport = 0;
+    //     protocol = '0';
+    // }
 
-    NF_Flow(uint32_t sip, uint32_t dip, uint32_t sport, uint32_t dport, char protocol) {
-        this->sip = sip;
-        this-> dip = dip;
-        this->sport = sport;
-        this->dport = dport;
-        this->protocol = protocol;
+    NF_Flow(ParsedPacket pkt) {
+        this->sip = pkt.sip;
+        this-> dip = pkt.dip;
+        this->sport = pkt.sport;
+        this->dport = pkt.dport;
+        this->protocol = pkt.protocol;
     }
 
     bool operator==(const NF_Flow &other) const { 
@@ -161,18 +164,29 @@ struct NF_Hasher {
 
 //Defines a value of NF entry in hash table
 struct NF_Flow_Info {
-    timeval first_ts;
-    timeval final_ts;
+    uint32_t first_tv_sec;
+    uint32_t first_tv_usec;
+    uint32_t final_tv_sec;
+    uint32_t final_tv_usec;
     uint tot_pkts;
     uint tot_payload_bytes;
 
-    NF_Flow_Info() {
-        first_ts.tv_sec = 0;
-        first_ts.tv_usec = 0;
-        final_ts.tv_sec = 0;
-        final_ts.tv_usec = 0;
-        tot_pkts = 0;
-        tot_payload_bytes = 0;
+    // NF_Flow_Info() {
+    //     first_tv_sec = 0;
+    //     first_tv_usec = 0;
+    //     final_tv_sec = 0;
+    //     final_tv_usec = 0;
+    //     tot_pkts = 0;
+    //     tot_payload_bytes = 0;
+    // }
+
+    NF_Flow_Info(uint32_t first_tv_sec, uint32_t first_tv_usec, uint32_t final_tv_sec, uint32_t final_tv_usec, uint tot_pkts, uint tot_payload_bytes) {
+        this->first_tv_sec = first_tv_sec;
+        this->first_tv_usec = first_tv_usec;
+        this->final_tv_sec = final_tv_sec;
+        this->final_tv_usec = final_tv_usec;
+        this->tot_pkts = tot_pkts;
+        this->tot_payload_bytes = tot_payload_bytes;
     }
 };
 
@@ -260,8 +274,9 @@ void run_w_file(Out_Function func, const char* file_name) {
 }
 
 
-//Runs Packet print mode 
-std::vector<ParsedPacket> get_Packets(FILE* fptr) {
+//Returns a vector of the packets in the trace file
+//NEED TO DESTRUCT PACKETS AND FREE MEMORY AT SOME POINT (probably here)
+std::vector<ParsedPacket> get_packets(FILE* fptr) {
     //std::vector<Packet> packets;
     std::vector<ParsedPacket> packets;
     struct Packet pkt;
@@ -356,8 +371,9 @@ void print_ip(uint32_t ipaddr) {
     }
 }
 
-void Packet_print(FILE* fptr) {
-    std::vector<ParsedPacket> packets = get_Packets(fptr);
+
+void packet_print(FILE* fptr) {
+    std::vector<ParsedPacket> packets = get_packets(fptr);
 
     for (ParsedPacket pkt : packets) {
         fprintf(stdout, "%.6f ", (double)(pkt.sec_net) + ((double)(pkt.usec_net) / U_SEC_CONV_FACTOR));
@@ -369,8 +385,9 @@ void Packet_print(FILE* fptr) {
         fprintf(stdout, "%c ", pkt.protocol);
         //u_int transport_hdr_size = (pkt.ip_hdr->protocol == TCP_PROTOCOL ? ((DOFF_OFFSET*pkt.tcp_hdr->th_off)) : UDP_HDR_SIZE);
         fprintf(stdout, "%u ", pkt.transport_hdr_size);
-        u_int paylen = pkt.tot_len - pkt.transport_hdr_size - IPV4_HDR_SIZE;
-        fprintf(stdout, "%u ", paylen);
+        //u_int paylen = pkt.tot_len - pkt.transport_hdr_size - IPV4_HDR_SIZE;
+        //fprintf(stdout, "%u ", paylen);
+        fprintf(stdout, "%u ", pkt.paylen);
         if (pkt.protocol == 'U') {
             fprintf(stdout, "- ");
         }
@@ -387,7 +404,7 @@ void Packet_print(FILE* fptr) {
 }
 
 void netflow(FILE* fptr) {
-    std::vector<ParsedPacket> packets = get_Packets(fptr);
+    std::vector<ParsedPacket> packets = get_packets(fptr);
 
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table;
 
@@ -395,8 +412,18 @@ void netflow(FILE* fptr) {
     //if 5 tuple of a Packet matches, update the value 
     //if 5 tuple does not match, create new entry in da table 
     for (ParsedPacket pkt : packets) {
-        //first create a hash from this packet's info relevant to 5 tuple
-        //we'll need to look up udp and tcp packets differently 
+        //then see if key exists in table
+        //if not, create an entry where key = key, val = new val from packet
+        //if exists, examine contents of packet to determine modified fields for value and set value to that
+        
+        //first create key from parsed packet
+        NF_Flow nf_flow(pkt);
+        if (flow_table.find(nf_flow) == flow_table.end()) {
+            //not in table 
+            //create nf_flow value
+            NF_Flow_Info nf_flow_info(pkt.sec_net, pkt.usec_net, pkt.sec_net, pkt.usec_net, 1, pkt.paylen);
+        }
+
     }
 
 
@@ -409,7 +436,7 @@ int main(int argc, char* argv[]) {
 
     //send valid args to methods
     if (cmd_line_flags == (ARG_PACKET_PRINT | ARG_TRACE_FILE)) {
-        run_w_file(Packet_print, trace_file_name);
+        run_w_file(packet_print, trace_file_name);
     }
     else if (cmd_line_flags == (ARG_RTT | ARG_TRACE_FILE)) {
         fprintf(stdout, "rtt %s\n", trace_file_name);
