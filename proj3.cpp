@@ -43,13 +43,13 @@ char* trace_file_name = NULL;
 //Type all output functions 
 typedef void (*Out_Function)(FILE*);
 
-//Define hash_combine function...i dont really know
-template <class T>
-inline void hash_combine(std::size_t& seed, const T& v)
-{
-    std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);     //Holy constants 💀
-}
+// //Define hash_combine function...i dont really know
+// template <class T>
+// inline void hash_combine(std::size_t& seed, const T& v)
+// {
+//     std::hash<T> hasher;
+//     seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);     //Holy constants 💀
+// }
 
 //Defines a Packet from trace file 
 struct Packet{
@@ -62,6 +62,7 @@ struct Packet{
     struct iphdr *ip_hdr;
     struct udphdr *udp_hdr;
     struct tcphdr *tcp_hdr;
+
 };
 
 //A packet that has fields in network byte order and more accessible fields 
@@ -122,13 +123,6 @@ struct NF_Flow {
     uint16_t dport;
     char protocol;
 
-    // NF_Flow() {
-    //     sip = 0;
-    //     dip = 0;
-    //     sport = 0;
-    //     dport = 0;
-    //     protocol = '0';
-    // }
 
     NF_Flow(ParsedPacket pkt) {
         this->sip = pkt.sip;
@@ -151,14 +145,12 @@ struct NF_Flow {
 struct NF_Hasher {
     size_t operator()(const NF_Flow& nf_flw) const {
         //not using xor to hash because the order matters 
-        std::size_t seed = 0;
-        hash_combine(seed, nf_flw.sip);
-        hash_combine(seed, nf_flw.dip);
-        hash_combine(seed, nf_flw.sport);
-        hash_combine(seed, nf_flw.dport);
-        hash_combine(seed, nf_flw.protocol);
-        return seed;
-
+        std::string key = std::to_string(nf_flw.sip) + "-" +
+            std::to_string(nf_flw.sport) + "-" +
+            std::to_string(nf_flw.dip) + "-" +
+            std::to_string(nf_flw.dport) + "-" +
+            std::to_string(nf_flw.protocol);
+        return std::hash<std::string>{}(key);
     }
 };
 
@@ -171,14 +163,14 @@ struct NF_Flow_Info {
     uint tot_pkts;
     uint tot_payload_bytes;
 
-    // NF_Flow_Info() {
-    //     first_tv_sec = 0;
-    //     first_tv_usec = 0;
-    //     final_tv_sec = 0;
-    //     final_tv_usec = 0;
-    //     tot_pkts = 0;
-    //     tot_payload_bytes = 0;
-    // }
+    NF_Flow_Info() {
+        first_tv_sec = 0;
+        first_tv_usec = 0;
+        final_tv_sec = 0;
+        final_tv_usec = 0;
+        tot_pkts = 0;
+        tot_payload_bytes = 0;
+    }
 
     NF_Flow_Info(uint32_t first_tv_sec, uint32_t first_tv_usec, uint32_t final_tv_sec, uint32_t final_tv_usec, uint tot_pkts, uint tot_payload_bytes) {
         this->first_tv_sec = first_tv_sec;
@@ -354,8 +346,20 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
         if (!ignore) {
             ParsedPacket parsed_pkt(pkt);
             packets.push_back(parsed_pkt);
+        }
 
-            //packets.push_back(pkt); 
+        //Need to always free 
+        if (pkt.ip_hdr) { 
+            free(pkt.ip_hdr); 
+            pkt.ip_hdr = nullptr; 
+        }
+        if (pkt.udp_hdr) { 
+            free(pkt.udp_hdr); 
+            pkt.udp_hdr = nullptr; 
+        }
+        if (pkt.tcp_hdr) { 
+            free(pkt.tcp_hdr); 
+            pkt.tcp_hdr = nullptr; 
         }
     }
     return packets;
