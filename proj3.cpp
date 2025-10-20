@@ -103,7 +103,7 @@ struct ParsedPacket{
             this->protocol = 'T';
             this->transport_hdr_size = (DOFF_OFFSET*pkt.tcp_hdr->th_off);
             this->seq =  ntohl(pkt.tcp_hdr->seq);
-            this->ack = ntohl(pkt.tcp_hdr->ack);
+            this->ack = ntohl(pkt.tcp_hdr->th_ack);
             this->th_flags = pkt.tcp_hdr->th_flags;
         }
     }
@@ -365,28 +365,28 @@ void Packet_print(FILE* fptr) {
     std::vector<ParsedPacket> packets = get_Packets(fptr);
 
     for (ParsedPacket pkt : packets) {
-        fprintf(stdout, "%.6f ", (double)(ntohl(pkt.sec_net)) + ((double)(ntohl(pkt.usec_net)) / U_SEC_CONV_FACTOR));
-        print_ip(ntohl(pkt.ip_hdr->saddr));
-        fprintf(stdout, "%d ", pkt.ip_hdr->protocol == TCP_PROTOCOL ? ntohs(pkt.tcp_hdr->th_sport) : ntohs(pkt.udp_hdr->uh_sport));
-        print_ip(ntohl(pkt.ip_hdr->daddr));
-        fprintf(stdout, "%d ", pkt.ip_hdr->protocol == TCP_PROTOCOL ? ntohs(pkt.tcp_hdr->th_dport) : ntohs(pkt.udp_hdr->uh_dport));
-        fprintf(stdout, "%u ", ntohs(pkt.ip_hdr->tot_len));
-        fprintf(stdout, pkt.ip_hdr->protocol == TCP_PROTOCOL ? "T " : "U ");
-        u_int transport_hdr_size = (pkt.ip_hdr->protocol == TCP_PROTOCOL ? ((DOFF_OFFSET*pkt.tcp_hdr->th_off)) : UDP_HDR_SIZE);
-        fprintf(stdout, "%u ", transport_hdr_size);
-        u_int paylen = ntohs(pkt.ip_hdr->tot_len) - transport_hdr_size - IPV4_HDR_SIZE;
+        fprintf(stdout, "%.6f ", (double)(pkt.sec_net) + ((double)(pkt.usec_net) / U_SEC_CONV_FACTOR));
+        print_ip(pkt.sip);
+        fprintf(stdout, "%d ", pkt.sport);
+        print_ip(pkt.dip);
+        fprintf(stdout, "%d ", pkt.dport);
+        fprintf(stdout, "%u ", pkt.tot_len);
+        fprintf(stdout, "%c ", pkt.protocol);
+        //u_int transport_hdr_size = (pkt.ip_hdr->protocol == TCP_PROTOCOL ? ((DOFF_OFFSET*pkt.tcp_hdr->th_off)) : UDP_HDR_SIZE);
+        fprintf(stdout, "%u ", pkt.transport_hdr_size);
+        u_int paylen = pkt.tot_len - pkt.transport_hdr_size - IPV4_HDR_SIZE;
         fprintf(stdout, "%u ", paylen);
-        if (pkt.ip_hdr->protocol == UDP_PROTOCOL) {
+        if (pkt.protocol == 'U') {
             fprintf(stdout, "- ");
         }
         else {
-            fprintf(stdout,"%u ", ntohl(pkt.tcp_hdr->seq));
+            fprintf(stdout,"%u ", pkt.seq);
         }
-        if (pkt.ip_hdr->protocol == UDP_PROTOCOL || (pkt.tcp_hdr->th_flags & TH_ACK) != TH_ACK) {
+        if (pkt.protocol == 'U' || (pkt.th_flags & TH_ACK) != TH_ACK) {
             fprintf(stdout, "-\n");
         }
         else {
-            fprintf(stdout, "%u\n", ntohl(pkt.tcp_hdr->th_ack));
+            fprintf(stdout, "%u\n", pkt.ack);
         }
     }
 }
