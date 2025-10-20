@@ -171,14 +171,14 @@ struct NF_Flow_Info {
     uint tot_pkts;
     uint tot_payload_bytes;
 
-    NF_Flow_Info() {
-        first_tv_sec = 0;
-        first_tv_usec = 0;
-        final_tv_sec = 0;
-        final_tv_usec = 0;
-        tot_pkts = 0;
-        tot_payload_bytes = 0;
-    }
+    // NF_Flow_Info() {
+    //     first_tv_sec = 0;
+    //     first_tv_usec = 0;
+    //     final_tv_sec = 0;
+    //     final_tv_usec = 0;
+    //     tot_pkts = 0;
+    //     tot_payload_bytes = 0;
+    // }
 
     NF_Flow_Info(uint32_t first_tv_sec, uint32_t first_tv_usec, uint32_t final_tv_sec, uint32_t final_tv_usec, uint tot_pkts, uint tot_payload_bytes) {
         this->first_tv_sec = first_tv_sec;
@@ -288,12 +288,10 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
     bool ignore = false;
 
     while(fread(&pkt, 1, MIN_PKT_SIZE, fptr) == MIN_PKT_SIZE) {
-        //first i need to look at the ip header and see if its ipv4 so that ill know whether or not to keep going
-        //ill keep the Packet stored in network byte order for now, and ntohs it if i need to l8r
         if (ntohs(pkt.ethernet_hdr.ether_type) == IPV4_TYPE) {
             //malloc for iphdr pointer 
             pkt.ip_hdr = (struct iphdr *) malloc(IPV4_HDR_SIZE);
-            //check if malloc worked 
+            //check if malloc worked                                //holy repeated code
             if (pkt.ip_hdr == nullptr) {
                 fprintf(stderr, "error: allocation failed\n");
                 exit(1);
@@ -371,7 +369,6 @@ void print_ip(uint32_t ipaddr) {
     }
 }
 
-
 void packet_print(FILE* fptr) {
     std::vector<ParsedPacket> packets = get_packets(fptr);
 
@@ -383,10 +380,7 @@ void packet_print(FILE* fptr) {
         fprintf(stdout, "%d ", pkt.dport);
         fprintf(stdout, "%u ", pkt.tot_len);
         fprintf(stdout, "%c ", pkt.protocol);
-        //u_int transport_hdr_size = (pkt.ip_hdr->protocol == TCP_PROTOCOL ? ((DOFF_OFFSET*pkt.tcp_hdr->th_off)) : UDP_HDR_SIZE);
         fprintf(stdout, "%u ", pkt.transport_hdr_size);
-        //u_int paylen = pkt.tot_len - pkt.transport_hdr_size - IPV4_HDR_SIZE;
-        //fprintf(stdout, "%u ", paylen);
         fprintf(stdout, "%u ", pkt.paylen);
         if (pkt.protocol == 'U') {
             fprintf(stdout, "- ");
