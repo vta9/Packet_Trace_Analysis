@@ -34,7 +34,7 @@ proj3.cpp
 #define BYTE_SIZE 8
 #define MASK 0xFF
 #define U_SEC_CONV_FACTOR 1000000.0
-#define TH_ACK        0x10
+#define TH_ACK 0x10
 
 
 unsigned short cmd_line_flags = 0;
@@ -42,6 +42,14 @@ char* trace_file_name = NULL;
 
 //Type all output functions 
 typedef void (*Out_Function)(FILE*);
+
+//Define hash_combine function...i dont really know
+template <class T>
+inline void hash_combine(std::size_t& seed, const T& v)
+{
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+}
 
 //Defines a packet from trace file 
 struct packet{
@@ -72,13 +80,30 @@ struct nf_flow {
         protocol = '0';
     }
 
-    bool operator==(const nf_flow &other) const
-  { return (sip == other.sip
+    bool operator==(const nf_flow &other) const { 
+        return (sip == other.sip
             && dip == other.dip
             && sport == other.sport
             && dport == other.dport
-            && protocol = other.protocol);
-  }
+            && protocol == other.protocol);
+    }
+};
+
+//Defines a custom hash function for the NF hash table 
+struct nf_hasher {
+
+
+    size_t operator()(const nf_flow& nf_flw) const {
+        //not using xor to hash because the order matters 
+        std::size_t seed = 0;
+        hash_combine(seed, nf_flw.sip);
+        hash_combine(seed, nf_flw.dip);
+        hash_combine(seed, nf_flw.sport);
+        hash_combine(seed, nf_flw.dport);
+        hash_combine(seed, nf_flw.protocol);
+        return seed;
+
+    }
 };
 
 //Defines a value of NF entry in hash table
@@ -312,7 +337,7 @@ void packet_print(FILE* fptr) {
 void netflow(FILE* fptr) {
     std::vector<packet> packets = get_packets(fptr);
 
-    std::unordered_map<nf_flow, nf_flow_info> flow_table;
+    std::unordered_map<nf_flow, nf_flow_info, nf_hasher> flow_table;
 
 
 
