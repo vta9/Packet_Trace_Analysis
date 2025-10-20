@@ -43,14 +43,6 @@ char* trace_file_name = NULL;
 //Type all output functions 
 typedef void (*Out_Function)(FILE*);
 
-// //Define hash_combine function...i dont really know
-// template <class T>
-// inline void hash_combine(std::size_t& seed, const T& v)
-// {
-//     std::hash<T> hasher;
-//     seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);     //Holy constants 💀
-// }
-
 //Defines a Packet from trace file 
 struct Packet{
     //Garunteed to exist 
@@ -267,7 +259,6 @@ void run_w_file(Out_Function func, const char* file_name) {
 
 
 //Returns a vector of the packets in the trace file
-//NEED TO DESTRUCT PACKETS AND FREE MEMORY AT SOME POINT (probably here)
 std::vector<ParsedPacket> get_packets(FILE* fptr) {
     //std::vector<Packet> packets;
     std::vector<ParsedPacket> packets;
@@ -401,47 +392,49 @@ void packet_print(FILE* fptr) {
     }
 }
 
-std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_netflow_table(FILE* fptr) {
+std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_flow_table(FILE* fptr, bool include_udp) {
     std::vector<ParsedPacket> packets = get_packets(fptr);
 
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table;
 
     for (ParsedPacket& pkt : packets) {  
-        //first create key from parsed packet
-        NF_Flow nf_flow(pkt);
+        if (include_udp == true || pkt.protocol == 'T') {
+            //first create key from parsed packet
+            NF_Flow nf_flow(pkt);
 
-        auto it = flow_table.find(nf_flow);
-        if (it == flow_table.end()) {
-            //create nf_flow value
-            NF_Flow_Info nf_flow_info(pkt.sec_net, pkt.usec_net, pkt.sec_net, pkt.usec_net, 1, pkt.paylen);
-            flow_table[nf_flow] = nf_flow_info;
-        }
-        else {
-            NF_Flow_Info& curr_info = it->second;
-
-            //bias: assume current timestamps are right 
-            //handle first time stamp
-            if (pkt.sec_net < curr_info.first_tv_sec ||
-           (pkt.sec_net == curr_info.first_tv_sec && pkt.usec_net < curr_info.first_tv_usec)) {
-            curr_info.first_tv_sec = pkt.sec_net;
-            curr_info.first_tv_usec = pkt.usec_net;
+            auto it = flow_table.find(nf_flow);
+            if (it == flow_table.end()) {
+                //create nf_flow value
+                NF_Flow_Info nf_flow_info(pkt.sec_net, pkt.usec_net, pkt.sec_net, pkt.usec_net, 1, pkt.paylen);
+                flow_table[nf_flow] = nf_flow_info;
             }
+            else {
+                NF_Flow_Info& curr_info = it->second;
 
-            //handle second timestamp 
-            if (pkt.sec_net > curr_info.final_tv_sec ||
-           (pkt.sec_net == curr_info.final_tv_sec && pkt.usec_net > curr_info.final_tv_usec)) {
-            curr_info.final_tv_sec = pkt.sec_net;
-            curr_info.final_tv_usec = pkt.usec_net;
-        }
-        curr_info.tot_pkts += 1;
-        curr_info.tot_payload_bytes += pkt.paylen;
+                //bias: assume current timestamps are right 
+                //handle first time stamp
+                if (pkt.sec_net < curr_info.first_tv_sec ||
+            (pkt.sec_net == curr_info.first_tv_sec && pkt.usec_net < curr_info.first_tv_usec)) {
+                curr_info.first_tv_sec = pkt.sec_net;
+                curr_info.first_tv_usec = pkt.usec_net;
+                }
+
+                //handle second timestamp 
+                if (pkt.sec_net > curr_info.final_tv_sec ||
+            (pkt.sec_net == curr_info.final_tv_sec && pkt.usec_net > curr_info.final_tv_usec)) {
+                curr_info.final_tv_sec = pkt.sec_net;
+                curr_info.final_tv_usec = pkt.usec_net;
+            }
+            curr_info.tot_pkts += 1;
+            curr_info.tot_payload_bytes += pkt.paylen;
+            }
         }
     }
     return flow_table;
 }
 
 void print_netflow(FILE * fptr) {
-    std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table = get_netflow_table(fptr);
+    std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table = get_flow_table(fptr, true);
 
     //print
     for (auto it : flow_table) {
@@ -466,6 +459,10 @@ void print_netflow(FILE * fptr) {
 
     } 
 
+}
+
+std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> print_rtt(FILE* fptr) {
+    std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table = get_flow_table(fptr, false);
 }
 
 int main(int argc, char* argv[]) {
