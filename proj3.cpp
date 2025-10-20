@@ -51,8 +51,8 @@ inline void hash_combine(std::size_t& seed, const T& v)
     seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
 }
 
-//Defines a packet from trace file 
-struct packet{
+//Defines a Packet from trace file 
+struct Packet{
     //Garunteed to exist 
     uint32_t sec_net;
     uint32_t usec_net; 
@@ -64,15 +64,15 @@ struct packet{
     struct tcphdr *tcp_hdr;
 };
 
-//Defines a 5 tuple flow to be used as key in hash table :D
-struct nf_flow {
+//Defines a 5 tuple flow to be used as key in hash table
+struct NF_Flow {
     uint32_t sip;
     uint32_t dip;
     uint16_t sport;
     uint16_t dport;
     char protocol;
 
-    nf_flow() {
+    NF_Flow() {
         sip = 0;
         dip = 0;
         sport = 0;
@@ -80,7 +80,7 @@ struct nf_flow {
         protocol = '0';
     }
 
-    bool operator==(const nf_flow &other) const { 
+    bool operator==(const NF_Flow &other) const { 
         return (sip == other.sip
             && dip == other.dip
             && sport == other.sport
@@ -90,10 +90,8 @@ struct nf_flow {
 };
 
 //Defines a custom hash function for the NF hash table 
-struct nf_hasher {
-
-
-    size_t operator()(const nf_flow& nf_flw) const {
+struct NF_Hasher {
+    size_t operator()(const NF_Flow& nf_flw) const {
         //not using xor to hash because the order matters 
         std::size_t seed = 0;
         hash_combine(seed, nf_flw.sip);
@@ -107,13 +105,13 @@ struct nf_hasher {
 };
 
 //Defines a value of NF entry in hash table
-struct nf_flow_info {
+struct NF_Flow_Info {
     timeval first_ts;
     timeval final_ts;
     uint tot_pkts;
     uint tot_payload_bytes;
 
-    nf_flow_info() {
+    NF_Flow_Info() {
         first_ts.tv_sec = 0;
         first_ts.tv_usec = 0;
         final_ts.tv_sec = 0;
@@ -207,15 +205,15 @@ void run_w_file(Out_Function func, const char* file_name) {
 }
 
 
-//Runs packet print mode 
+//Runs Packet print mode 
 /*
-Each packet will produce a single line of output, as follows:
+Each Packet will produce a single line of output, as follows:
 ts sip sport dip dport iplen protocol thlen paylen seqno ackno
-dont print packets that dont have UDP or TCP as their transport prot
+dont print Packets that dont have UDP or TCP as their transport prot
 */
-std::vector<packet> get_packets(FILE* fptr) {
-    std::vector<packet> packets;
-    struct packet pkt;
+std::vector<Packet> get_Packets(FILE* fptr) {
+    std::vector<Packet> packets;
+    struct Packet pkt;
 
     pkt.ip_hdr = nullptr;
     pkt.udp_hdr = nullptr;
@@ -225,7 +223,7 @@ std::vector<packet> get_packets(FILE* fptr) {
 
     while(fread(&pkt, 1, MIN_PKT_SIZE, fptr) == MIN_PKT_SIZE) {
         //first i need to look at the ip header and see if its ipv4 so that ill know whether or not to keep going
-        //ill keep the packet stored in network byte order for now, and ntohs it if i need to l8r
+        //ill keep the Packet stored in network byte order for now, and ntohs it if i need to l8r
         if (ntohs(pkt.ethernet_hdr.ether_type) == IPV4_TYPE) {
             //malloc for iphdr pointer 
             pkt.ip_hdr = (struct iphdr *) malloc(IPV4_HDR_SIZE);
@@ -304,10 +302,10 @@ void print_ip(uint32_t ipaddr) {
     }
 }
 
-void packet_print(FILE* fptr) {
-    std::vector<packet> packets = get_packets(fptr);
+void Packet_print(FILE* fptr) {
+    std::vector<Packet> packets = get_Packets(fptr);
 
-    for (packet pkt : packets) {
+    for (Packet pkt : packets) {
         fprintf(stdout, "%.6f ", (double)(ntohl(pkt.sec_net)) + ((double)(ntohl(pkt.usec_net)) / U_SEC_CONV_FACTOR));
         print_ip(ntohl(pkt.ip_hdr->saddr));
         fprintf(stdout, "%d ", pkt.ip_hdr->protocol == TCP_PROTOCOL ? ntohs(pkt.tcp_hdr->th_sport) : ntohs(pkt.udp_hdr->uh_sport));
@@ -335,9 +333,16 @@ void packet_print(FILE* fptr) {
 }
 
 void netflow(FILE* fptr) {
-    std::vector<packet> packets = get_packets(fptr);
+    std::vector<Packet> packets = get_Packets(fptr);
 
-    std::unordered_map<nf_flow, nf_flow_info, nf_hasher> flow_table;
+    std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table;
+
+    //loop through Packets and add to the hash table by flows
+    //if 5 tuple of a Packet matches, update the value 
+    //if 5 tuple does not match, create new entry in da table 
+    for (Packet pkt : packets) {
+
+    }
 
 
 
@@ -349,7 +354,7 @@ int main(int argc, char* argv[]) {
 
     //send valid args to methods
     if (cmd_line_flags == (ARG_PACKET_PRINT | ARG_TRACE_FILE)) {
-        run_w_file(packet_print, trace_file_name);
+        run_w_file(Packet_print, trace_file_name);
     }
     else if (cmd_line_flags == (ARG_RTT | ARG_TRACE_FILE)) {
         fprintf(stdout, "rtt %s\n", trace_file_name);
