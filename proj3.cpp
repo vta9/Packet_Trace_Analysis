@@ -261,11 +261,6 @@ void run_w_file(Out_Function func, const char* file_name) {
 
 
 //Runs Packet print mode 
-/*
-Each Packet will produce a single line of output, as follows:
-ts sip sport dip dport iplen protocol thlen paylen seqno ackno
-dont print Packets that dont have UDP or TCP as their transport prot
-*/
 std::vector<ParsedPacket> get_Packets(FILE* fptr) {
     //std::vector<Packet> packets;
     std::vector<ParsedPacket> packets;
