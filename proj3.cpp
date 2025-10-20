@@ -171,14 +171,14 @@ struct NF_Flow_Info {
     uint tot_pkts;
     uint tot_payload_bytes;
 
-    // NF_Flow_Info() {
-    //     first_tv_sec = 0;
-    //     first_tv_usec = 0;
-    //     final_tv_sec = 0;
-    //     final_tv_usec = 0;
-    //     tot_pkts = 0;
-    //     tot_payload_bytes = 0;
-    // }
+    NF_Flow_Info() {
+        first_tv_sec = 0;
+        first_tv_usec = 0;
+        final_tv_sec = 0;
+        final_tv_usec = 0;
+        tot_pkts = 0;
+        tot_payload_bytes = 0;
+    }
 
     NF_Flow_Info(uint32_t first_tv_sec, uint32_t first_tv_usec, uint32_t final_tv_sec, uint32_t final_tv_usec, uint tot_pkts, uint tot_payload_bytes) {
         this->first_tv_sec = first_tv_sec;
@@ -408,25 +408,85 @@ void netflow(FILE* fptr) {
 
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table;
 
-    //loop through Packets and add to the hash table by flows
-    //if 5 tuple of a Packet matches, update the value 
-    //if 5 tuple does not match, create new entry in da table 
-    for (ParsedPacket pkt : packets) {
-        //then see if key exists in table
-        //if not, create an entry where key = key, val = new val from packet
-        //if exists, examine contents of packet to determine modified fields for value and set value to that
-        
+    NF_Flow_Info flag();
+
+    for (ParsedPacket& pkt : packets) {  
         //first create key from parsed packet
         NF_Flow nf_flow(pkt);
-        if (flow_table.find(nf_flow) == flow_table.end()) {
+
+        auto it = flow_table.find(nf_flow);
+
+        if (it == flow_table.end()) {
             //not in table 
             //create nf_flow value
             NF_Flow_Info nf_flow_info(pkt.sec_net, pkt.usec_net, pkt.sec_net, pkt.usec_net, 1, pkt.paylen);
+            //put into da table 
+            flow_table[nf_flow] = nf_flow_info;
+        }
+        else {
+            NF_Flow_Info& curr_info = it->second;
+            //set first timestamp to earliest timestamp 
+
+            //handle first time stamp
+            uint32_t first_tv_sec = curr_info.first_tv_sec;
+            uint32_t first_tv_usec = curr_info.first_tv_usec;
+            //bias: current time stamp is earlier 
+            if(curr_info.first_tv_sec > pkt.sec_net) {
+                first_tv_sec = pkt.sec_net;
+                first_tv_usec = pkt.usec_net;
+            }
+            else if (curr_info.first_tv_sec == pkt.sec_net){
+                //if secs are equal, compare microsecs
+                if (curr_info.first_tv_usec > pkt.usec_net) {
+                    first_tv_sec = pkt.sec_net;
+                    first_tv_usec = pkt.usec_net;
+                }
+            }
+
+            //handle second timestamp 
+            uint32_t final_tv_sec = curr_info.final_tv_sec;
+            uint32_t final_tv_usec = curr_info.final_tv_usec;
+            //bias: current time stamp is later
+            if(curr_info.final_tv_sec < pkt.sec_net) {
+                final_tv_sec = pkt.sec_net;
+                final_tv_usec = pkt.usec_net;
+            }
+            else if (curr_info.final_tv_sec == pkt.sec_net){
+                //if secs are equal, compare microsecs
+                printf("stupid ahh seconds");
+                if (curr_info.final_tv_usec < pkt.usec_net) {
+                    final_tv_sec = pkt.sec_net;
+                    final_tv_usec = pkt.usec_net;
+                }
+            }
+
+            //increment # packets
+            u_int tot_pkts = curr_info.tot_pkts + 1;
+
+            //add to paylength
+            u_int paylen = curr_info.tot_payload_bytes + pkt.paylen;
+
+            //create struct with all of these fields
+            NF_Flow_Info new_info(first_tv_sec, first_tv_usec, final_tv_sec, final_tv_usec, tot_pkts, paylen);
+
+            //update entry in table
+            flow_table[nf_flow] = new_info;
         }
 
     }
+    //print
+    for (auto it : flow_table) {
+        print_ip(it.first.sip);
+        fprintf(stdout, "%d ", it.first.sport);
+        print_ip(it.first.dip);
+        fprintf(stdout, "%d ", it.first.dport);
+        fprintf(stdout, "%c ", it.first.protocol);
+        fprintf(stdout, "%.6f ", (double)(it.second.first_tv_sec) + ((double)(it.second.first_tv_usec) / U_SEC_CONV_FACTOR));
+        fprintf(stdout, "%.6f ", (double)(it.second.final_tv_sec-it.second.first_tv_sec) + ((double)(it.second.final_tv_usec-it.second.first_tv_usec) / U_SEC_CONV_FACTOR));
+        fprintf(stdout, "%u ", it.second.tot_pkts);
+        fprintf(stdout, "%u\n", it.second.tot_payload_bytes);
 
-
+    } 
 
 }
 
