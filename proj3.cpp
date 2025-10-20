@@ -48,7 +48,7 @@ template <class T>
 inline void hash_combine(std::size_t& seed, const T& v)
 {
     std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+    seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);     //Holy constants 💀
 }
 
 //Defines a Packet from trace file 
@@ -62,6 +62,53 @@ struct Packet{
     struct iphdr *ip_hdr;
     struct udphdr *udp_hdr;
     struct tcphdr *tcp_hdr;
+};
+
+//A packet that has fields in network byte order and more accessible fields 
+struct ParsedPacket{
+    uint32_t sec_net;
+    uint32_t usec_net; 
+
+    uint32_t sip;
+    uint32_t dip;
+    uint16_t sport;
+    uint16_t dport;
+    char protocol;
+
+    u_int transport_hdr_size;
+    uint16_t tot_len;
+
+    uint32_t seq;
+    uint32_t ack;
+
+    uint8_t th_flags;
+
+    ParsedPacket(Packet pkt) {
+        this->sec_net = ntohl(pkt.sec_net);
+        this->usec_net = ntohl(pkt.usec_net);
+        this->sip = ntohl(pkt.ip_hdr->saddr);
+        this->dip = ntohl(pkt.ip_hdr->daddr);
+        this->tot_len = ntohs(pkt.ip_hdr->tot_len);
+
+        if (pkt.ip_hdr->protocol == UDP_PROTOCOL) {
+            this->sport = ntohs(pkt.udp_hdr->uh_sport);
+            this->dport = ntohs(pkt.udp_hdr->uh_dport);
+            this->protocol = 'U';
+            this->transport_hdr_size = UDP_HDR_SIZE;
+
+        }
+        else {
+            this->sport = ntohs(pkt.tcp_hdr->th_sport);
+            this->dport = ntohs(pkt.tcp_hdr->th_dport);
+            this->protocol = 'T';
+            this->transport_hdr_size = (DOFF_OFFSET*pkt.tcp_hdr->th_off);
+            this->seq =  ntohl(pkt.tcp_hdr->seq);
+            this->ack = ntohl(pkt.tcp_hdr->ack);
+            this->th_flags = pkt.tcp_hdr->th_flags;
+        }
+    }
+
+
 };
 
 //Defines a 5 tuple flow to be used as key in hash table
@@ -78,6 +125,14 @@ struct NF_Flow {
         sport = 0;
         dport = 0;
         protocol = '0';
+    }
+
+    NF_Flow(uint32_t sip, uint32_t dip, uint32_t sport, uint32_t dport, char protocol) {
+        this->sip = sip;
+        this-> dip = dip;
+        this->sport = sport;
+        this->dport = dport;
+        this->protocol = protocol;
     }
 
     bool operator==(const NF_Flow &other) const { 
@@ -211,8 +266,9 @@ Each Packet will produce a single line of output, as follows:
 ts sip sport dip dport iplen protocol thlen paylen seqno ackno
 dont print Packets that dont have UDP or TCP as their transport prot
 */
-std::vector<Packet> get_Packets(FILE* fptr) {
-    std::vector<Packet> packets;
+std::vector<ParsedPacket> get_Packets(FILE* fptr) {
+    //std::vector<Packet> packets;
+    std::vector<ParsedPacket> packets;
     struct Packet pkt;
 
     pkt.ip_hdr = nullptr;
@@ -288,7 +344,10 @@ std::vector<Packet> get_Packets(FILE* fptr) {
             ignore = true;
         }
         if (!ignore) {
-            packets.push_back(pkt); 
+            ParsedPacket parsed_pkt(pkt);
+            packets.push_back(parsed_pkt);
+
+            //packets.push_back(pkt); 
         }
     }
     return packets;
@@ -303,9 +362,9 @@ void print_ip(uint32_t ipaddr) {
 }
 
 void Packet_print(FILE* fptr) {
-    std::vector<Packet> packets = get_Packets(fptr);
+    std::vector<ParsedPacket> packets = get_Packets(fptr);
 
-    for (Packet pkt : packets) {
+    for (ParsedPacket pkt : packets) {
         fprintf(stdout, "%.6f ", (double)(ntohl(pkt.sec_net)) + ((double)(ntohl(pkt.usec_net)) / U_SEC_CONV_FACTOR));
         print_ip(ntohl(pkt.ip_hdr->saddr));
         fprintf(stdout, "%d ", pkt.ip_hdr->protocol == TCP_PROTOCOL ? ntohs(pkt.tcp_hdr->th_sport) : ntohs(pkt.udp_hdr->uh_sport));
@@ -333,15 +392,16 @@ void Packet_print(FILE* fptr) {
 }
 
 void netflow(FILE* fptr) {
-    std::vector<Packet> packets = get_Packets(fptr);
+    std::vector<ParsedPacket> packets = get_Packets(fptr);
 
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table;
 
     //loop through Packets and add to the hash table by flows
     //if 5 tuple of a Packet matches, update the value 
     //if 5 tuple does not match, create new entry in da table 
-    for (Packet pkt : packets) {
-
+    for (ParsedPacket pkt : packets) {
+        //first create a hash from this packet's info relevant to 5 tuple
+        //we'll need to look up udp and tcp packets differently 
     }
 
 
