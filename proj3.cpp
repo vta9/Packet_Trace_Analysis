@@ -403,77 +403,48 @@ void packet_print(FILE* fptr) {
     }
 }
 
-void netflow(FILE* fptr) {
+std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_netflow_table(FILE* fptr) {
     std::vector<ParsedPacket> packets = get_packets(fptr);
 
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table;
-
-    NF_Flow_Info flag();
 
     for (ParsedPacket& pkt : packets) {  
         //first create key from parsed packet
         NF_Flow nf_flow(pkt);
 
         auto it = flow_table.find(nf_flow);
-
         if (it == flow_table.end()) {
-            //not in table 
             //create nf_flow value
             NF_Flow_Info nf_flow_info(pkt.sec_net, pkt.usec_net, pkt.sec_net, pkt.usec_net, 1, pkt.paylen);
-            //put into da table 
             flow_table[nf_flow] = nf_flow_info;
         }
         else {
             NF_Flow_Info& curr_info = it->second;
-            //set first timestamp to earliest timestamp 
 
+            //bias: assume current timestamps are right 
             //handle first time stamp
-            uint32_t first_tv_sec = curr_info.first_tv_sec;
-            uint32_t first_tv_usec = curr_info.first_tv_usec;
-            //bias: current time stamp is earlier 
-            if(curr_info.first_tv_sec > pkt.sec_net) {
-                first_tv_sec = pkt.sec_net;
-                first_tv_usec = pkt.usec_net;
-            }
-            else if (curr_info.first_tv_sec == pkt.sec_net){
-                //if secs are equal, compare microsecs
-                if (curr_info.first_tv_usec > pkt.usec_net) {
-                    first_tv_sec = pkt.sec_net;
-                    first_tv_usec = pkt.usec_net;
-                }
+            if (pkt.sec_net < curr_info.first_tv_sec ||
+           (pkt.sec_net == curr_info.first_tv_sec && pkt.usec_net < curr_info.first_tv_usec)) {
+            curr_info.first_tv_sec = pkt.sec_net;
+            curr_info.first_tv_usec = pkt.usec_net;
             }
 
             //handle second timestamp 
-            uint32_t final_tv_sec = curr_info.final_tv_sec;
-            uint32_t final_tv_usec = curr_info.final_tv_usec;
-            //bias: current time stamp is later
-            if(curr_info.final_tv_sec < pkt.sec_net) {
-                final_tv_sec = pkt.sec_net;
-                final_tv_usec = pkt.usec_net;
-            }
-            else if (curr_info.final_tv_sec == pkt.sec_net){
-                //if secs are equal, compare microsecs
-                printf("stupid ahh seconds");
-                if (curr_info.final_tv_usec < pkt.usec_net) {
-                    final_tv_sec = pkt.sec_net;
-                    final_tv_usec = pkt.usec_net;
-                }
-            }
-
-            //increment # packets
-            u_int tot_pkts = curr_info.tot_pkts + 1;
-
-            //add to paylength
-            u_int paylen = curr_info.tot_payload_bytes + pkt.paylen;
-
-            //create struct with all of these fields
-            NF_Flow_Info new_info(first_tv_sec, first_tv_usec, final_tv_sec, final_tv_usec, tot_pkts, paylen);
-
-            //update entry in table
-            flow_table[nf_flow] = new_info;
+            if (pkt.sec_net > curr_info.final_tv_sec ||
+           (pkt.sec_net == curr_info.final_tv_sec && pkt.usec_net > curr_info.final_tv_usec)) {
+            curr_info.final_tv_sec = pkt.sec_net;
+            curr_info.final_tv_usec = pkt.usec_net;
         }
-
+        curr_info.tot_pkts += 1;
+        curr_info.tot_payload_bytes += pkt.paylen;
+        }
     }
+    return flow_table;
+}
+
+void print_netflow(FILE * fptr) {
+    std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table = get_netflow_table(fptr);
+
     //print
     for (auto it : flow_table) {
         print_ip(it.first.sip);
@@ -482,7 +453,16 @@ void netflow(FILE* fptr) {
         fprintf(stdout, "%d ", it.first.dport);
         fprintf(stdout, "%c ", it.first.protocol);
         fprintf(stdout, "%.6f ", (double)(it.second.first_tv_sec) + ((double)(it.second.first_tv_usec) / U_SEC_CONV_FACTOR));
-        fprintf(stdout, "%.6f ", (double)(it.second.final_tv_sec-it.second.first_tv_sec) + ((double)(it.second.final_tv_usec-it.second.first_tv_usec) / U_SEC_CONV_FACTOR));
+
+        long sec_diff = (long)it.second.final_tv_sec - (long)it.second.first_tv_sec;
+        long usec_diff = (long)it.second.final_tv_usec - (long)it.second.first_tv_usec;
+        if (usec_diff < 0) 
+        { 
+            usec_diff += U_SEC_CONV_FACTOR; 
+            sec_diff -= 1; 
+        }
+        fprintf(stdout, "%.6f ", (double)sec_diff + (double)usec_diff / U_SEC_CONV_FACTOR);
+
         fprintf(stdout, "%u ", it.second.tot_pkts);
         fprintf(stdout, "%u\n", it.second.tot_payload_bytes);
 
@@ -503,7 +483,7 @@ int main(int argc, char* argv[]) {
     }
     else if (cmd_line_flags == (ARG_NET_FLOW | ARG_TRACE_FILE)) {
         //fprintf(stdout, "netflow %s\n", trace_file_name);
-        run_w_file(netflow, trace_file_name);
+        run_w_file(print_netflow, trace_file_name);
     }
     else {
         fprintf(stderr, "error: no valid input given\n");
