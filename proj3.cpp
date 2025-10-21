@@ -15,6 +15,7 @@ proj3.cpp
 #include <netinet/tcp.h> 
 #include <unordered_map>
 #include <vector>
+#include <algorithm>
 
 #define ARG_PACKET_PRINT 0x1
 #define ARG_NET_FLOW 0x2
@@ -70,14 +71,14 @@ struct ParsedPacket{
 
     u_int transport_hdr_size;
     uint16_t tot_len;
-    u_int paylen;
+    uint32_t paylen;
 
     uint32_t seq;
     uint32_t ack;
 
     uint8_t th_flags;
 
-    ParsedPacket(Packet pkt) {
+    ParsedPacket(Packet& pkt) {
         this->sec_net = ntohl(pkt.sec_net);
         this->usec_net = ntohl(pkt.usec_net);
         this->sip = ntohl(pkt.ip_hdr->saddr);
@@ -89,6 +90,7 @@ struct ParsedPacket{
             this->dport = ntohs(pkt.udp_hdr->uh_dport);
             this->protocol = 'U';
             this->transport_hdr_size = UDP_HDR_SIZE;
+            this->paylen = this->tot_len - IPV4_HDR_SIZE - this->transport_hdr_size;
 
         }
         else {
@@ -96,12 +98,12 @@ struct ParsedPacket{
             this->dport = ntohs(pkt.tcp_hdr->th_dport);
             this->protocol = 'T';
             this->transport_hdr_size = (DOFF_OFFSET*pkt.tcp_hdr->th_off);
+            this->paylen = this->tot_len - IPV4_HDR_SIZE - this->transport_hdr_size;
             this->seq =  ntohl(pkt.tcp_hdr->seq);
             this->ack = ntohl(pkt.tcp_hdr->th_ack);
             this->th_flags = pkt.tcp_hdr->th_flags;
         }
 
-        this->paylen = this->tot_len - this->transport_hdr_size - IPV4_HDR_SIZE;
     }
 
 
@@ -116,12 +118,20 @@ struct NF_Flow {
     char protocol;
 
 
-    NF_Flow(ParsedPacket pkt) {
+    NF_Flow(const ParsedPacket pkt) {
         this->sip = pkt.sip;
         this-> dip = pkt.dip;
         this->sport = pkt.sport;
         this->dport = pkt.dport;
         this->protocol = pkt.protocol;
+    }
+
+    NF_Flow(uint32_t sip, uint32_t dip, uint16_t sport, uint16_t dport,char protocol) {
+        this->sip = sip;
+        this-> dip = dip;
+        this->sport = sport;
+        this->dport = dport;
+        this->protocol = protocol;
     }
 
     bool operator==(const NF_Flow &other) const { 
@@ -154,6 +164,13 @@ struct NF_Flow_Info {
     uint32_t final_tv_usec;
     uint tot_pkts;
     uint tot_payload_bytes;
+
+    //specific to rtt mode
+    uint32_t first_seq;
+    uint32_t first_seq_tv_sec = UINT32_MAX;
+    uint32_t first_seq_tv_usec  = UINT32_MAX;
+    std::vector<std::pair<uint32_t, std::pair<uint32_t, uint32_t>>> ack_timestamps;
+
 
     NF_Flow_Info() {
         first_tv_sec = 0;
@@ -398,14 +415,25 @@ std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_flow_table(FILE* fptr, b
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table;
 
     for (ParsedPacket& pkt : packets) {  
-        if (include_udp == true || pkt.protocol == 'T') {
-            //first create key from parsed packet
+        if (include_udp == true || pkt.protocol != 'U') {
             NF_Flow nf_flow(pkt);
 
             auto it = flow_table.find(nf_flow);
             if (it == flow_table.end()) {
                 //create nf_flow value
                 NF_Flow_Info nf_flow_info(pkt.sec_net, pkt.usec_net, pkt.sec_net, pkt.usec_net, 1, pkt.paylen);
+                // printf("include udp: %d\n", include_udp);
+                if (!include_udp && pkt.paylen != 0) {
+                    nf_flow_info.first_seq = pkt.seq;
+                    nf_flow_info.first_seq_tv_sec = pkt.sec_net;
+                    nf_flow_info.first_seq_tv_usec = pkt.usec_net; 
+                }
+
+                //if this packet has an ack, add it to the vector that stores acks and timestamps
+                if (!include_udp && ((pkt.th_flags & TH_ACK) == TH_ACK)) {
+                    nf_flow_info.ack_timestamps = {{pkt.ack,{pkt.sec_net, pkt.usec_net}}};
+                }
+                
                 flow_table[nf_flow] = nf_flow_info;
             }
             else {
@@ -414,22 +442,36 @@ std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_flow_table(FILE* fptr, b
                 //bias: assume current timestamps are right 
                 //handle first time stamp
                 if (pkt.sec_net < curr_info.first_tv_sec ||
-            (pkt.sec_net == curr_info.first_tv_sec && pkt.usec_net < curr_info.first_tv_usec)) {
-                curr_info.first_tv_sec = pkt.sec_net;
-                curr_info.first_tv_usec = pkt.usec_net;
+                    (pkt.sec_net == curr_info.first_tv_sec && pkt.usec_net < curr_info.first_tv_usec)) {
+                    curr_info.first_tv_sec = pkt.sec_net;
+                    curr_info.first_tv_usec = pkt.usec_net;
                 }
 
                 //handle second timestamp 
                 if (pkt.sec_net > curr_info.final_tv_sec ||
-            (pkt.sec_net == curr_info.final_tv_sec && pkt.usec_net > curr_info.final_tv_usec)) {
-                curr_info.final_tv_sec = pkt.sec_net;
-                curr_info.final_tv_usec = pkt.usec_net;
-            }
-            curr_info.tot_pkts += 1;
-            curr_info.tot_payload_bytes += pkt.paylen;
+                    (pkt.sec_net == curr_info.final_tv_sec && pkt.usec_net > curr_info.final_tv_usec)) {
+                    curr_info.final_tv_sec = pkt.sec_net;
+                    curr_info.final_tv_usec = pkt.usec_net;
+                }
+                //handle rtt timestamp
+                if (!include_udp && pkt.paylen != 0 && (pkt.sec_net < curr_info.first_seq_tv_sec ||
+                    (pkt.sec_net == curr_info.first_seq_tv_sec && pkt.usec_net < curr_info.first_seq_tv_usec))) {
+                    curr_info.first_seq = pkt.seq;
+                    curr_info.first_seq_tv_sec = pkt.sec_net;
+                    curr_info.first_seq_tv_usec = pkt.usec_net; 
+                }
+
+            
+                curr_info.tot_pkts += 1;
+                curr_info.tot_payload_bytes += pkt.paylen;
+                //if this packet has an ack, add it to the vector that stores acks and timestamps
+                if (!include_udp && (pkt.th_flags & TH_ACK) == TH_ACK) {
+                    curr_info.ack_timestamps.push_back({pkt.ack, {pkt.sec_net, pkt.usec_net}});
+                }
             }
         }
     }
+
     return flow_table;
 }
 
@@ -461,8 +503,68 @@ void print_netflow(FILE * fptr) {
 
 }
 
-std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> print_rtt(FILE* fptr) {
+void print_rtt(FILE* fptr) {
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table = get_flow_table(fptr, false);
+
+    for (auto it : flow_table) {
+        //print all the easy stuff
+        print_ip(it.first.sip);
+        fprintf(stdout, "%d ", it.first.sport);
+        print_ip(it.first.dip);
+        fprintf(stdout, "%d ", it.first.dport);
+
+        //get seuquence number
+        uint32_t first_seq = it.second.first_seq;
+
+        //lookup reverse direction and get vector 
+        NF_Flow rev_flow(it.first.dip, it.first.sip, it.first.dport, it.first.sport, it.first.protocol);
+
+        auto rev_it = flow_table.find(rev_flow);
+        if (rev_it == flow_table.end()) {
+            fprintf(stdout, "-\n");
+            continue;
+        }
+
+        const NF_Flow_Info& rev_info = rev_it->second;
+
+        
+        std::vector<std::pair<uint32_t, std::pair<uint32_t, uint32_t>>> ack_timestamps = rev_info.ack_timestamps;
+        //printf("size of vector: %lu", ack_timestamps.size());
+
+        //lambda to sort the vector by time 
+        // std::sort(ack_timestamps.begin(), ack_timestamps.end(), [](const auto& a, const auto& b) {
+        //     const auto& a_time = a.second;
+        //     const auto& b_time = b.second;
+        //     if (a_time.first != b_time.first) { //if secs are not equal, compare by secs
+        //         return a_time.first < b_time.first;
+        //     }
+        //     else {
+        //         return a_time.second < b_time.second; //if secs are equal, compare by usecs 
+        //     }
+        // });
+
+        //find the first ack > seq and break loop 
+        bool ack_found = false;
+        for (const auto& pair : ack_timestamps) {
+            const auto& ack = pair.first;
+            const auto& t_ack = pair.second;
+            if (ack > first_seq) {
+                ack_found = true;
+                long sec_diff = (long)t_ack.first - (long)it.second.first_seq_tv_sec;
+                long usec_diff = (long)t_ack.second - (long)it.second.first_seq_tv_usec;
+                if (usec_diff < 0)
+                { 
+                    usec_diff += U_SEC_CONV_FACTOR;
+                    sec_diff -= 1; 
+                }
+                fprintf(stdout, "%.6f\n", (double)sec_diff + (double)usec_diff / U_SEC_CONV_FACTOR);
+                break;
+            }
+        }
+        if (!ack_found) {
+            fprintf(stdout, "-\n");
+        }
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -474,7 +576,8 @@ int main(int argc, char* argv[]) {
         run_w_file(packet_print, trace_file_name);
     }
     else if (cmd_line_flags == (ARG_RTT | ARG_TRACE_FILE)) {
-        fprintf(stdout, "rtt %s\n", trace_file_name);
+        //fprintf(stdout, "rtt %s\n", trace_file_name);
+        run_w_file(print_rtt, trace_file_name);
     }
     else if (cmd_line_flags == (ARG_NET_FLOW | ARG_TRACE_FILE)) {
         //fprintf(stdout, "netflow %s\n", trace_file_name);
