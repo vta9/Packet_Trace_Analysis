@@ -532,24 +532,26 @@ void print_rtt(FILE* fptr) {
         //printf("size of vector: %lu", ack_timestamps.size());
 
         //lambda to sort the vector by time 
-        // std::sort(ack_timestamps.begin(), ack_timestamps.end(), [](const auto& a, const auto& b) {
-        //     const auto& a_time = a.second;
-        //     const auto& b_time = b.second;
-        //     if (a_time.first != b_time.first) { //if secs are not equal, compare by secs
-        //         return a_time.first < b_time.first;
-        //     }
-        //     else {
-        //         return a_time.second < b_time.second; //if secs are equal, compare by usecs 
-        //     }
-        // });
+        std::sort(ack_timestamps.begin(), ack_timestamps.end(), [](const auto& a, const auto& b) {
+            const auto& a_time = a.second;
+            const auto& b_time = b.second;
+            if (a_time.first != b_time.first) { //if secs are not equal, compare by secs
+                return a_time.first < b_time.first;
+            }
+            else {
+                return a_time.second < b_time.second; //if secs are equal, compare by usecs 
+            }
+        });
 
         //find the first ack > seq and break loop 
         bool ack_found = false;
         for (const auto& pair : ack_timestamps) {
             const auto& ack = pair.first;
             const auto& t_ack = pair.second;
-            if (ack > first_seq) {
+            if (ack > first_seq && (t_ack.first > it.second.first_seq_tv_sec || (t_ack.first == it.second.first_seq_tv_sec && t_ack.second > it.second.first_seq_tv_usec))) {
                 ack_found = true;
+                // fprintf(stdout, "acktime: %.6f\n", (double)t_ack.first + (double)t_ack.second / U_SEC_CONV_FACTOR);
+                // fprintf(stdout, "seqtime: %.6f\n", (double)it.second.first_seq_tv_sec + (double)it.second.first_seq_tv_usec / U_SEC_CONV_FACTOR);
                 long sec_diff = (long)t_ack.first - (long)it.second.first_seq_tv_sec;
                 long usec_diff = (long)t_ack.second - (long)it.second.first_seq_tv_usec;
                 if (usec_diff < 0)
