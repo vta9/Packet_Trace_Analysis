@@ -288,7 +288,7 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
 
     while(fread(&pkt, 1, MIN_PKT_SIZE, fptr) == MIN_PKT_SIZE) {
         bool ignore = false;
-        printf("type in ethernet header: %u ", ntohs(pkt.ethernet_hdr.ether_type));
+        //printf("type in ethernet header: %u ", ntohs(pkt.ethernet_hdr.ether_type));
         if (ntohs(pkt.ethernet_hdr.ether_type) == IPV4_TYPE) {
             //malloc for iphdr pointer 
             pkt.ip_hdr = (struct iphdr *) malloc(IPV4_HDR_SIZE);
@@ -302,7 +302,7 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
             fread(pkt.ip_hdr, 1, IPV4_HDR_SIZE, fptr);
             //now check if protocol is udp or tcp 
             //just 8 bits so dont need to ntohs 
-             printf("type in ip header: %u\n", pkt.ip_hdr->protocol);
+            //printf("type in ip header: %u\n", pkt.ip_hdr->protocol);
             if (pkt.ip_hdr->protocol == UDP_PROTOCOL) {
 
                 //malloc for udp hdr pointer 
@@ -340,7 +340,7 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
                 int rem_length = (pkt.tcp_hdr->th_off * DOFF_OFFSET) - TCP_MIN_SIZE;
 
                 if (rem_length > 0) {
-                    printf("stupid rem tcp happening\n");
+                    //printf("stupid rem tcp happening\n");
                     //realloc to increase length
                     //malloc for tcp hdr pointer 
                     pkt.tcp_hdr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
@@ -361,19 +361,19 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
             }
             else {
                 ignore = true;
-                printf("tcp/udp ignore misfire?\n");
+                //printf("tcp/udp ignore misfire?\n");
             } 
         }
         else {
             ignore = true;
-            printf("ipv4 ignore misfire?\n");
+            //printf("ipv4 ignore misfire?\n");
             //size_t bytes_remaining = frame_length - bytes_already_read;
             //fseek(fptr, MIN_PKT_SIZE, SEEK_CUR);
         }
         if (!ignore) {
             ParsedPacket parsed_pkt(pkt);
             packets.push_back(parsed_pkt);
-            printf("pushed to stack\n");
+            //printf("pushed to stack\n");
         }
 
         //Need to always free 
@@ -403,7 +403,7 @@ void print_ip(uint32_t ipaddr) {
 
 void packet_print(FILE* fptr) {
     std::vector<ParsedPacket> packets = get_packets(fptr);
-    printf("size of packets: %zu\n", packets.size());
+    //printf("size of packets: %zu\n", packets.size());
 
     for (ParsedPacket pkt : packets) {
         fprintf(stdout, "%.6f ", (double)(pkt.sec_net) + ((double)(pkt.usec_net) / U_SEC_CONV_FACTOR));
