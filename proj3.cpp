@@ -3,8 +3,9 @@ Vincent Ave'Lallemant
 vta9
 proj3.cpp
 10/18/2025
-
+Code to print packet header, net flow, and rtt info from a packet trace file 
 */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -277,7 +278,6 @@ void run_w_file(Out_Function func, const char* file_name) {
 
 //Returns a vector of the packets in the trace file
 std::vector<ParsedPacket> get_packets(FILE* fptr) {
-    //std::vector<Packet> packets;
     std::vector<ParsedPacket> packets;
     struct Packet pkt;
 
@@ -288,7 +288,6 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
 
     while(fread(&pkt, 1, MIN_PKT_SIZE, fptr) == MIN_PKT_SIZE) {
         bool ignore = false;
-        //printf("type in ethernet header: %u ", ntohs(pkt.ethernet_hdr.ether_type));
         if (ntohs(pkt.ethernet_hdr.ether_type) == IPV4_TYPE) {
             //malloc for iphdr pointer 
             pkt.ip_hdr = (struct iphdr *) malloc(IPV4_HDR_SIZE);
@@ -302,7 +301,6 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
             fread(pkt.ip_hdr, 1, IPV4_HDR_SIZE, fptr);
             //now check if protocol is udp or tcp 
             //just 8 bits so dont need to ntohs 
-            //printf("type in ip header: %u\n", pkt.ip_hdr->protocol);
             if (pkt.ip_hdr->protocol == UDP_PROTOCOL) {
 
                 //malloc for udp hdr pointer 
@@ -340,7 +338,6 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
                 int rem_length = (pkt.tcp_hdr->th_off * DOFF_OFFSET) - TCP_MIN_SIZE;
 
                 if (rem_length > 0) {
-                    //printf("stupid rem tcp happening\n");
                     //realloc to increase length
                     //malloc for tcp hdr pointer 
                     pkt.tcp_hdr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
@@ -361,19 +358,14 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
             }
             else {
                 ignore = true;
-                //printf("tcp/udp ignore misfire?\n");
             } 
         }
         else {
             ignore = true;
-            //printf("ipv4 ignore misfire?\n");
-            //size_t bytes_remaining = frame_length - bytes_already_read;
-            //fseek(fptr, MIN_PKT_SIZE, SEEK_CUR);
         }
         if (!ignore) {
             ParsedPacket parsed_pkt(pkt);
             packets.push_back(parsed_pkt);
-            //printf("pushed to stack\n");
         }
 
         //Need to always free 
@@ -403,7 +395,6 @@ void print_ip(uint32_t ipaddr) {
 
 void packet_print(FILE* fptr) {
     std::vector<ParsedPacket> packets = get_packets(fptr);
-    //printf("size of packets: %zu\n", packets.size());
 
     for (ParsedPacket pkt : packets) {
         fprintf(stdout, "%.6f ", (double)(pkt.sec_net) + ((double)(pkt.usec_net) / U_SEC_CONV_FACTOR));
@@ -443,7 +434,6 @@ std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_flow_table(FILE* fptr, b
             if (it == flow_table.end()) {
                 //create nf_flow value
                 NF_Flow_Info nf_flow_info(pkt.sec_net, pkt.usec_net, pkt.sec_net, pkt.usec_net, 1, pkt.paylen);
-                // printf("include udp: %d\n", include_udp);
                 if (!include_udp && pkt.paylen != 0) {
                     nf_flow_info.first_seq = pkt.seq;
                     nf_flow_info.first_seq_tv_sec = pkt.sec_net;
@@ -541,6 +531,8 @@ void print_rtt(FILE* fptr) {
         NF_Flow rev_flow(it.first.dip, it.first.sip, it.first.dport, it.first.sport, it.first.protocol);
 
         auto rev_it = flow_table.find(rev_flow);
+
+        //If there is no RTT for this field
         if (rev_it == flow_table.end()) {
             fprintf(stdout, "-\n");
             continue;
@@ -548,15 +540,13 @@ void print_rtt(FILE* fptr) {
 
         const NF_Flow_Info& rev_info = rev_it->second;
 
-        
         std::vector<std::pair<uint32_t, std::pair<uint32_t, uint32_t>>> ack_timestamps = rev_info.ack_timestamps;
-        //printf("size of vector: %lu", ack_timestamps.size());
 
         //lambda to sort the vector by time 
         std::sort(ack_timestamps.begin(), ack_timestamps.end(), [](const auto& a, const auto& b) {
             const auto& a_time = a.second;
             const auto& b_time = b.second;
-            if (a_time.first != b_time.first) { //if secs are not equal, compare by secs
+            if (a_time.first != b_time.first) { //if secs are not equal, compare by usecs
                 return a_time.first < b_time.first;
             }
             else {
@@ -571,8 +561,6 @@ void print_rtt(FILE* fptr) {
             const auto& t_ack = pair.second;
             if (ack > first_seq && (t_ack.first > it.second.first_seq_tv_sec || (t_ack.first == it.second.first_seq_tv_sec && t_ack.second > it.second.first_seq_tv_usec))) {
                 ack_found = true;
-                // fprintf(stdout, "acktime: %.6f\n", (double)t_ack.first + (double)t_ack.second / U_SEC_CONV_FACTOR);
-                // fprintf(stdout, "seqtime: %.6f\n", (double)it.second.first_seq_tv_sec + (double)it.second.first_seq_tv_usec / U_SEC_CONV_FACTOR);
                 long sec_diff = (long)t_ack.first - (long)it.second.first_seq_tv_sec;
                 long usec_diff = (long)t_ack.second - (long)it.second.first_seq_tv_usec;
                 if (usec_diff < 0)
@@ -599,11 +587,9 @@ int main(int argc, char* argv[]) {
         run_w_file(packet_print, trace_file_name);
     }
     else if (cmd_line_flags == (ARG_RTT | ARG_TRACE_FILE)) {
-        //fprintf(stdout, "rtt %s\n", trace_file_name);
         run_w_file(print_rtt, trace_file_name);
     }
     else if (cmd_line_flags == (ARG_NET_FLOW | ARG_TRACE_FILE)) {
-        //fprintf(stdout, "netflow %s\n", trace_file_name);
         run_w_file(print_netflow, trace_file_name);
     }
     else {

@@ -4,18 +4,33 @@
 			"path": "proj3.cpp",
 			"bookmarks": [
 				{
-					"line": 44,
+					"line": 45,
 					"column": 3,
 					"label": ""
 				},
 				{
-					"line": 294,
+					"line": 293,
 					"column": 88,
 					"label": ""
 				},
 				{
-					"line": 352,
+					"line": 314,
+					"column": 38,
+					"label": ""
+				},
+				{
+					"line": 330,
+					"column": 45,
+					"label": ""
+				},
+				{
+					"line": 349,
 					"column": 27,
+					"label": ""
+				},
+				{
+					"line": 352,
+					"column": 48,
 					"label": ""
 				}
 			]
