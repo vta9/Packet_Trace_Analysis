@@ -315,6 +315,30 @@ void try_read_iphdr(Packet& pkt, FILE* fptr) {
 
     if (fread(pkt.ip_hdr, 1, IPV4_HDR_SIZE, fptr) != IPV4_HDR_SIZE) {
         fprintf(stderr, "error: unexpected end of file\n");
+        free(pkt.ip_hdr);
+        pkt.ip_hdr = nullptr;
+        exit(1);
+    }
+}
+
+void try_read_udphdr(Packet& pkt, FILE* fptr) {
+    //malloc for iphdr pointer 
+    pkt.udp_hdr = (struct udphdr*) malloc_check(UDP_HDR_SIZE, "UDP header");
+
+    if (fread(pkt.udp_hdr, 1, UDP_HDR_SIZE, fptr) != UDP_HDR_SIZE ) {
+        free(pkt.udp_hdr);
+        pkt.udp_hdr = nullptr;
+        exit(1);
+    }
+}
+
+void try_read_tcphdr(Packet& pkt, FILE* fptr) {
+    //malloc for iphdr pointer 
+    pkt.tcp_hdr = (struct tcphdr*) malloc_check(TCP_MIN_SIZE, "TCP header");
+
+    if (fread(pkt.tcp_hdr, 1, TCP_MIN_SIZE, fptr) != TCP_MIN_SIZE) {
+        free(pkt.tcp_hdr);
+        pkt.tcp_hdr = nullptr;
         exit(1);
     }
 }
@@ -328,50 +352,21 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
     pkt.udp_hdr = nullptr;
     pkt.tcp_hdr = nullptr;
 
-
     while(fread(&pkt, 1, MIN_PKT_SIZE, fptr) == MIN_PKT_SIZE) {
         bool ignore = false;
         if (ntohs(pkt.ethernet_hdr.ether_type) == IPV4_TYPE) {
-
             try_read_iphdr(pkt, fptr);
-            //malloc for iphdr pointer 
-            //pkt.ip_hdr = (struct iphdr*) malloc_check(IPV4_HDR_SIZE, "IPv4 header");
-
-            //next 20 bytes garunteed to be ipv4 header 
-
-            //also need to check everytime i read from a file !!!!!!!!!!!!!!!!!!!!
-            //fread(pkt.ip_hdr, 1, IPV4_HDR_SIZE, fptr);
-            //now check if protocol is udp or tcp 
-            //just 8 bits so dont need to ntohs 
+             
             if (pkt.ip_hdr->protocol == UDP_PROTOCOL) {
-
-                //malloc for udp hdr pointer 
-                pkt.udp_hdr = (struct udphdr*) malloc_check(UDP_HDR_SIZE, "UDP header");
-
-                if (fread(pkt.udp_hdr, 1, UDP_HDR_SIZE, fptr) != UDP_HDR_SIZE ) {
-                    fprintf(stderr, "error: unexpected EOF reading UDP header\n");
-                    free(pkt.ip_hdr); pkt.ip_hdr = nullptr;
-                    break;
-                }
+                try_read_udphdr(pkt, fptr);
             }
             else if (pkt.ip_hdr->protocol == TCP_PROTOCOL) {
+                try_read_tcphdr(pkt, fptr);
 
-                //malloc for tcp hdr pointer 
-                pkt.tcp_hdr = (struct tcphdr*) malloc_check(TCP_MIN_SIZE, "TCP header");
-
-                if (fread(pkt.tcp_hdr, 1, TCP_MIN_SIZE, fptr) != TCP_MIN_SIZE) {
-                    fprintf(stderr, "error: unexpected EOF reading TCP base header\n");
-                    free(pkt.ip_hdr); pkt.ip_hdr = nullptr;
-                    break;
-                }
-
-                //multiply offset by 4 to get total length of header 
-                //continue reading total length - 20 bytes of header
                 int rem_length = (pkt.tcp_hdr->th_off * DOFF_OFFSET) - TCP_MIN_SIZE;
 
                 if (rem_length > 0) {
                     //realloc to increase length
-                    //malloc for tcp hdr pointer 
                     pkt.tcp_hdr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
                     //check if malloc worked 
                     if (pkt.tcp_hdr == nullptr) {
@@ -379,28 +374,24 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
                         exit(1);
                     }
                     
-                    //kms kms kms 
                     //I still have basically no idea whats going on here 
                     u_int8_t* end_of_tcp = (u_int8_t*) (pkt.tcp_hdr) + TCP_MIN_SIZE;
                     if (fread(end_of_tcp, 1, rem_length, fptr) != rem_length) {
-                        fprintf(stderr, "error: unexpected EOF reading TCP remaining header\n");
-                        free(pkt.ip_hdr); pkt.ip_hdr = nullptr;
+                        fprintf(stderr, "error: unexpected end of file reading TCP remaining header\n");
+                        free(pkt.tcp_hdr); 
+                        pkt.tcp_hdr = nullptr;
                         break;
                     }
                 }
             }
-            else {
-                ignore = true;
-            } 
+            else ignore = true;
         }
-        else {
-            ignore = true;
-        }
+        else ignore = true;
+
         if (!ignore) {
             ParsedPacket parsed_pkt(pkt);
             packets.push_back(parsed_pkt);
         }
-
         free_hdrs(pkt);
     }
     return packets;
