@@ -293,7 +293,7 @@ void* malloc_check(size_t size, const char* header_type) {
     return ptr;
 }
 
-void free_hdrs(Packet pkt) {
+void free_hdrs(Packet& pkt) {
 //Regardless of if we push packet to stack, need to free everything
     if (pkt.ip_hdr) { 
         free(pkt.ip_hdr); 
@@ -391,18 +391,19 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
         }
 
         //Regardless of if we push packet to stack, need to free everything
-        if (pkt.ip_hdr) { 
-            free(pkt.ip_hdr); 
-            pkt.ip_hdr = nullptr; 
-        }
-        if (pkt.udp_hdr) { 
-            free(pkt.udp_hdr); 
-            pkt.udp_hdr = nullptr; 
-        }
-        if (pkt.tcp_hdr) { 
-            free(pkt.tcp_hdr); 
-            pkt.tcp_hdr = nullptr; 
-        }
+        // if (pkt.ip_hdr) { 
+        //     free(pkt.ip_hdr); 
+        //     pkt.ip_hdr = nullptr; 
+        // }
+        // if (pkt.udp_hdr) { 
+        //     free(pkt.udp_hdr); 
+        //     pkt.udp_hdr = nullptr; 
+        // }
+        // if (pkt.tcp_hdr) { 
+        //     free(pkt.tcp_hdr); 
+        //     pkt.tcp_hdr = nullptr; 
+        // }
+        free_hdrs(pkt);
     }
     return packets;
 }
