@@ -417,6 +417,15 @@ void print_ts_diff(uint32_t sec_i, uint32_t usec_i, uint32_t sec_f, uint32_t use
     fprintf(stdout, "%.6f", (double)sec_diff + (double)usec_diff / U_SEC_CONV_FACTOR);
 }
 
+
+//Prints common address/port part of all outputs
+void print_addr_port(uint32_t sip, uint16_t sport, uint32_t dip, uint16_t dport) {
+    print_ip(sip);
+    fprintf(stdout, "%d ", sport);
+    print_ip(dip);
+    fprintf(stdout, "%d ", dport);
+}
+
 //Returns whether timestamp a is earlier than timestamp b
 bool is_earlier(uint32_t sec_a, uint32_t usec_a, uint32_t sec_b, uint32_t usec_b) {
     return sec_a < sec_b || ((sec_a == sec_b) && usec_a < usec_b);
@@ -431,12 +440,8 @@ void packet_print(FILE* fptr) {
     std::vector<ParsedPacket> packets = get_packets(fptr);
 
     for (ParsedPacket pkt : packets) {
-        //fprintf(stdout, "%.6f ", (double)(pkt.sec_net) + ((double)(pkt.usec_net) / U_SEC_CONV_FACTOR));
         print_ts(pkt.sec_net, pkt.usec_net);
-        print_ip(pkt.sip);
-        fprintf(stdout, "%d ", pkt.sport);
-        print_ip(pkt.dip);
-        fprintf(stdout, "%d ", pkt.dport);
+        print_addr_port(pkt.sip, pkt.sport, pkt.dip, pkt.dport);
         fprintf(stdout, "%u ", pkt.tot_len);
         fprintf(stdout, "%c ", pkt.protocol);
         fprintf(stdout, "%u ", pkt.transport_hdr_size);
@@ -520,10 +525,7 @@ void print_netflow(FILE * fptr) {
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table = get_flow_table(fptr, true);
 
     for (auto it : flow_table) {
-        print_ip(it.first.sip);
-        fprintf(stdout, "%d ", it.first.sport);
-        print_ip(it.first.dip);
-        fprintf(stdout, "%d ", it.first.dport);
+        print_addr_port(it.first.sip, it.first.sport, it.first.dip, it.first.dport);
         fprintf(stdout, "%c ", it.first.protocol);
         print_ts(it.second.first_tv_sec,it.second.first_tv_usec);
 
@@ -555,11 +557,7 @@ void print_rtt(FILE* fptr) {
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table = get_flow_table(fptr, false);
 
     for (auto it : flow_table) {
-        //print all the easy stuff
-        print_ip(it.first.sip);
-        fprintf(stdout, "%d ", it.first.sport);
-        print_ip(it.first.dip);
-        fprintf(stdout, "%d ", it.first.dport);
+        print_addr_port(it.first.sip, it.first.sport, it.first.dip, it.first.dport);
 
         //get sequence number
         uint32_t first_seq = it.second.first_seq;
@@ -576,7 +574,7 @@ void print_rtt(FILE* fptr) {
         //Otherwise get the vector of acks and timestamps
         const NF_Flow_Info& rev_info = rev_it->second;
         std::vector<std::pair<uint32_t, std::pair<uint32_t, uint32_t>>> ack_timestamps = rev_info.ack_timestamps;
-        sort(ack_timestamps);
+        sort(ack_timestamps);   //sort by earliest time
 
         //find the first ack > seq and break loop 
         bool ack_found = false;
