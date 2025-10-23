@@ -519,7 +519,6 @@ std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_flow_table(FILE* fptr, b
 void print_netflow(FILE * fptr) {
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table = get_flow_table(fptr, true);
 
-    //print
     for (auto it : flow_table) {
         print_ip(it.first.sip);
         fprintf(stdout, "%d ", it.first.sport);
@@ -538,6 +537,20 @@ void print_netflow(FILE * fptr) {
 
 }
 
+//lambda to sort the vector by time 
+void sort(std::vector<std::pair<uint32_t, std::pair<uint32_t, uint32_t>>>& ack_timestamps) {
+    std::sort(ack_timestamps.begin(), ack_timestamps.end(), [](const auto& a, const auto& b) {
+        const auto& a_time = a.second;
+        const auto& b_time = b.second;
+        if (a_time.first != b_time.first) { //if secs are not equal, compare by usecs
+            return a_time.first < b_time.first;
+        }
+        else {
+            return a_time.second < b_time.second; //if secs are equal, compare by usecs 
+        }
+    });
+}
+
 void print_rtt(FILE* fptr) {
     std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> flow_table = get_flow_table(fptr, false);
 
@@ -551,9 +564,8 @@ void print_rtt(FILE* fptr) {
         //get sequence number
         uint32_t first_seq = it.second.first_seq;
 
-        //lookup reverse direction and get vector 
+        //lookup reverse direction
         NF_Flow rev_flow(it.first.dip, it.first.sip, it.first.dport, it.first.sport, it.first.protocol);
-
         auto rev_it = flow_table.find(rev_flow);
 
         //If there is no RTT for this field
@@ -561,22 +573,10 @@ void print_rtt(FILE* fptr) {
             fprintf(stdout, "-\n");
             continue;
         }
-
+        //Otherwise get the vector of acks and timestamps
         const NF_Flow_Info& rev_info = rev_it->second;
-
         std::vector<std::pair<uint32_t, std::pair<uint32_t, uint32_t>>> ack_timestamps = rev_info.ack_timestamps;
-
-        //lambda to sort the vector by time 
-        std::sort(ack_timestamps.begin(), ack_timestamps.end(), [](const auto& a, const auto& b) {
-            const auto& a_time = a.second;
-            const auto& b_time = b.second;
-            if (a_time.first != b_time.first) { //if secs are not equal, compare by usecs
-                return a_time.first < b_time.first;
-            }
-            else {
-                return a_time.second < b_time.second; //if secs are equal, compare by usecs 
-            }
-        });
+        sort(ack_timestamps);
 
         //find the first ack > seq and break loop 
         bool ack_found = false;
