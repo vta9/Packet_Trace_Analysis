@@ -368,7 +368,7 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
             packets.push_back(parsed_pkt);
         }
 
-        //Need to always free 
+        //Regardless of if we push packet to stack, need to free everything
         if (pkt.ip_hdr) { 
             free(pkt.ip_hdr); 
             pkt.ip_hdr = nullptr; 
@@ -393,11 +393,27 @@ void print_ip(uint32_t ipaddr) {
     }
 }
 
+void print_ts(uint32_t sec, uint32_t usec) {
+    fprintf(stdout, "%.6f ", (double)(sec) + ((double)(usec) / U_SEC_CONV_FACTOR));
+}
+
+void print_ts_diff(uint32_t sec_i, uint32_t usec_i, uint32_t sec_f, uint32_t usec_f) {
+    long sec_diff = (long)sec_f- (long)sec_i;
+    long usec_diff = (long)usec_f - (long)usec_i;
+    if (usec_diff < 0) 
+    { 
+        usec_diff = U_SEC_CONV_FACTOR + usec_diff; 
+        sec_diff--; 
+    }
+    fprintf(stdout, "%.6f", (double)sec_diff + (double)usec_diff / U_SEC_CONV_FACTOR);
+}
+
 void packet_print(FILE* fptr) {
     std::vector<ParsedPacket> packets = get_packets(fptr);
 
     for (ParsedPacket pkt : packets) {
-        fprintf(stdout, "%.6f ", (double)(pkt.sec_net) + ((double)(pkt.usec_net) / U_SEC_CONV_FACTOR));
+        //fprintf(stdout, "%.6f ", (double)(pkt.sec_net) + ((double)(pkt.usec_net) / U_SEC_CONV_FACTOR));
+        print_ts(pkt.sec_net, pkt.usec_net);
         print_ip(pkt.sip);
         fprintf(stdout, "%d ", pkt.sport);
         print_ip(pkt.dip);
@@ -496,16 +512,10 @@ void print_netflow(FILE * fptr) {
         print_ip(it.first.dip);
         fprintf(stdout, "%d ", it.first.dport);
         fprintf(stdout, "%c ", it.first.protocol);
-        fprintf(stdout, "%.6f ", (double)(it.second.first_tv_sec) + ((double)(it.second.first_tv_usec) / U_SEC_CONV_FACTOR));
+        print_ts(it.second.first_tv_sec,it.second.first_tv_usec);
 
-        long sec_diff = (long)it.second.final_tv_sec - (long)it.second.first_tv_sec;
-        long usec_diff = (long)it.second.final_tv_usec - (long)it.second.first_tv_usec;
-        if (usec_diff < 0) 
-        { 
-            usec_diff += U_SEC_CONV_FACTOR; 
-            sec_diff -= 1; 
-        }
-        fprintf(stdout, "%.6f ", (double)sec_diff + (double)usec_diff / U_SEC_CONV_FACTOR);
+        print_ts_diff(it.second.first_tv_sec, it.second.first_tv_usec, it.second.final_tv_sec, it.second.final_tv_usec);
+        fprintf(stdout, " ");
 
         fprintf(stdout, "%u ", it.second.tot_pkts);
         fprintf(stdout, "%u\n", it.second.tot_payload_bytes);
@@ -561,14 +571,8 @@ void print_rtt(FILE* fptr) {
             const auto& t_ack = pair.second;
             if (ack > first_seq && (t_ack.first > it.second.first_seq_tv_sec || (t_ack.first == it.second.first_seq_tv_sec && t_ack.second > it.second.first_seq_tv_usec))) {
                 ack_found = true;
-                long sec_diff = (long)t_ack.first - (long)it.second.first_seq_tv_sec;
-                long usec_diff = (long)t_ack.second - (long)it.second.first_seq_tv_usec;
-                if (usec_diff < 0)
-                { 
-                    usec_diff += U_SEC_CONV_FACTOR;
-                    sec_diff -= 1; 
-                }
-                fprintf(stdout, "%.6f\n", (double)sec_diff + (double)usec_diff / U_SEC_CONV_FACTOR);
+                print_ts_diff(it.second.first_seq_tv_sec, it.second.first_seq_tv_usec, t_ack.first, t_ack.second);
+                fprintf(stdout, "\n");
                 break;
             }
         }
