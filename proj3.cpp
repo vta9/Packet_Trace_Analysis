@@ -309,6 +309,15 @@ void free_hdrs(Packet& pkt) {
     }
 }
 
+void try_read_iphdr(Packet& pkt, FILE* fptr) {
+    //malloc for iphdr pointer 
+    pkt.ip_hdr = (struct iphdr*) malloc_check(IPV4_HDR_SIZE, "IPv4 header");
+
+    if (fread(pkt.ip_hdr, 1, IPV4_HDR_SIZE, fptr) != IPV4_HDR_SIZE) {
+        fprintf(stderr, "error: unexpected end of file\n");
+        exit(1);
+    }
+}
 
 //Returns a vector of the packets in the trace file
 std::vector<ParsedPacket> get_packets(FILE* fptr) {
@@ -323,13 +332,15 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
     while(fread(&pkt, 1, MIN_PKT_SIZE, fptr) == MIN_PKT_SIZE) {
         bool ignore = false;
         if (ntohs(pkt.ethernet_hdr.ether_type) == IPV4_TYPE) {
+
+            try_read_iphdr(pkt, fptr);
             //malloc for iphdr pointer 
-            pkt.ip_hdr = (struct iphdr*) malloc_check(IPV4_HDR_SIZE, "IPv4 header");
+            //pkt.ip_hdr = (struct iphdr*) malloc_check(IPV4_HDR_SIZE, "IPv4 header");
 
             //next 20 bytes garunteed to be ipv4 header 
 
             //also need to check everytime i read from a file !!!!!!!!!!!!!!!!!!!!
-            fread(pkt.ip_hdr, 1, IPV4_HDR_SIZE, fptr);
+            //fread(pkt.ip_hdr, 1, IPV4_HDR_SIZE, fptr);
             //now check if protocol is udp or tcp 
             //just 8 bits so dont need to ntohs 
             if (pkt.ip_hdr->protocol == UDP_PROTOCOL) {
@@ -390,19 +401,6 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
             packets.push_back(parsed_pkt);
         }
 
-        //Regardless of if we push packet to stack, need to free everything
-        // if (pkt.ip_hdr) { 
-        //     free(pkt.ip_hdr); 
-        //     pkt.ip_hdr = nullptr; 
-        // }
-        // if (pkt.udp_hdr) { 
-        //     free(pkt.udp_hdr); 
-        //     pkt.udp_hdr = nullptr; 
-        // }
-        // if (pkt.tcp_hdr) { 
-        //     free(pkt.tcp_hdr); 
-        //     pkt.tcp_hdr = nullptr; 
-        // }
         free_hdrs(pkt);
     }
     return packets;
