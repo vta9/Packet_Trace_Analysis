@@ -292,6 +292,24 @@ void* malloc_check(size_t size, const char* header_type) {
 
     return ptr;
 }
+
+void free_hdrs(Packet pkt) {
+//Regardless of if we push packet to stack, need to free everything
+    if (pkt.ip_hdr) { 
+        free(pkt.ip_hdr); 
+        pkt.ip_hdr = nullptr; 
+    }
+    if (pkt.udp_hdr) { 
+        free(pkt.udp_hdr); 
+        pkt.udp_hdr = nullptr; 
+    }
+    if (pkt.tcp_hdr) { 
+        free(pkt.tcp_hdr); 
+        pkt.tcp_hdr = nullptr; 
+    }
+}
+
+
 //Returns a vector of the packets in the trace file
 std::vector<ParsedPacket> get_packets(FILE* fptr) {
     std::vector<ParsedPacket> packets;
@@ -307,12 +325,6 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
         if (ntohs(pkt.ethernet_hdr.ether_type) == IPV4_TYPE) {
             //malloc for iphdr pointer 
             pkt.ip_hdr = (struct iphdr*) malloc_check(IPV4_HDR_SIZE, "IPv4 header");
-            // pkt.ip_hdr = (struct iphdr *) malloc(IPV4_HDR_SIZE);
-            // //check if malloc worked                                //holy repeated code
-            // if (pkt.ip_hdr == nullptr) {
-            //     fprintf(stderr, "error: allocation failed\n");
-            //     exit(1);
-            // }
 
             //next 20 bytes garunteed to be ipv4 header 
 
@@ -324,11 +336,6 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
 
                 //malloc for udp hdr pointer 
                 pkt.udp_hdr = (struct udphdr*) malloc_check(UDP_HDR_SIZE, "UDP header");
-                //check if malloc worked 
-                // if (pkt.udp_hdr == nullptr) {
-                //     fprintf(stderr, "error: allocation failed\n");
-                //     exit(1);
-                // }
 
                 if (fread(pkt.udp_hdr, 1, UDP_HDR_SIZE, fptr) != UDP_HDR_SIZE ) {
                     fprintf(stderr, "error: unexpected EOF reading UDP header\n");
@@ -340,11 +347,6 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
 
                 //malloc for tcp hdr pointer 
                 pkt.tcp_hdr = (struct tcphdr*) malloc_check(TCP_MIN_SIZE, "TCP header");
-                //check if malloc worked 
-                // if (pkt.tcp_hdr == nullptr) {
-                //     fprintf(stderr, "error: allocation failed\n");
-                //     exit(1);
-                // }
 
                 if (fread(pkt.tcp_hdr, 1, TCP_MIN_SIZE, fptr) != TCP_MIN_SIZE) {
                     fprintf(stderr, "error: unexpected EOF reading TCP base header\n");
@@ -362,7 +364,7 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
                     pkt.tcp_hdr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
                     //check if malloc worked 
                     if (pkt.tcp_hdr == nullptr) {
-                        fprintf(stderr, "error: allocation failed\n");
+                        fprintf(stderr, "error: failed to acocate remaining TCP header\n");
                         exit(1);
                     }
                     
