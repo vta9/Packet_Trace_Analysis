@@ -190,6 +190,13 @@ struct NF_Flow_Info {
         this->tot_pkts = tot_pkts;
         this->tot_payload_bytes = tot_payload_bytes;
     }
+
+    void update_seq(ParsedPacket pkt) {
+        this->first_seq = pkt.seq;
+        this->first_seq_tv_sec = pkt.sec_net;
+        this->first_seq_tv_usec = pkt.usec_net;
+    }
+
 };
 
 //Adds arg to cmd_line_flags unless it was already given 
@@ -393,10 +400,12 @@ void print_ip(uint32_t ipaddr) {
     }
 }
 
+//Prints timestamp 
 void print_ts(uint32_t sec, uint32_t usec) {
     fprintf(stdout, "%.6f ", (double)(sec) + ((double)(usec) / U_SEC_CONV_FACTOR));
 }
 
+//Prints diff between initial and final timestamp with no(!!!!) padding on end 
 void print_ts_diff(uint32_t sec_i, uint32_t usec_i, uint32_t sec_f, uint32_t usec_f) {
     long sec_diff = (long)sec_f- (long)sec_i;
     long usec_diff = (long)usec_f - (long)usec_i;
@@ -406,6 +415,16 @@ void print_ts_diff(uint32_t sec_i, uint32_t usec_i, uint32_t sec_f, uint32_t use
         sec_diff--; 
     }
     fprintf(stdout, "%.6f", (double)sec_diff + (double)usec_diff / U_SEC_CONV_FACTOR);
+}
+
+//Returns whether timestamp a is earlier than timestamp b
+bool is_earlier(uint32_t sec_a, uint32_t usec_a, uint32_t sec_b, uint32_t usec_b) {
+    return sec_a < sec_b || ((sec_a == sec_b) && usec_a < usec_b);
+}
+
+//Returns whether timestamp a is later than timestamp b
+bool is_later(uint32_t sec_a, uint32_t usec_a, uint32_t sec_b, uint32_t usec_b) {
+    return sec_a > sec_b || ((sec_a == sec_b) && usec_a > usec_b);
 }
 
 void packet_print(FILE* fptr) {
@@ -437,6 +456,27 @@ void packet_print(FILE* fptr) {
     }
 }
 
+void info_update(NF_Flow_Info& curr_info, ParsedPacket pkt, bool include_udp) {
+    //handle first time stamp
+    if (is_earlier(pkt.sec_net, pkt.usec_net, curr_info.first_tv_sec, curr_info.first_tv_usec)) {
+        curr_info.first_tv_sec = pkt.sec_net;
+        curr_info.first_tv_usec = pkt.usec_net;
+    }
+    //handle final time stamp
+    if (is_later(pkt.sec_net, pkt.usec_net, curr_info.final_tv_sec, curr_info.final_tv_usec)) {
+        curr_info.final_tv_sec = pkt.sec_net;
+        curr_info.final_tv_usec = pkt.usec_net;
+    }
+    //handle rtt timestamp
+    if (!include_udp && pkt.paylen != 0 && 
+        is_earlier(pkt.sec_net, pkt.usec_net, curr_info.first_seq_tv_sec, curr_info.first_seq_tv_usec)) {
+        curr_info.update_seq(pkt);
+    }
+
+    curr_info.tot_pkts += 1;
+    curr_info.tot_payload_bytes += pkt.paylen;
+}
+
 std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_flow_table(FILE* fptr, bool include_udp) {
     std::vector<ParsedPacket> packets = get_packets(fptr);
 
@@ -451,9 +491,7 @@ std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_flow_table(FILE* fptr, b
                 //create nf_flow value
                 NF_Flow_Info nf_flow_info(pkt.sec_net, pkt.usec_net, pkt.sec_net, pkt.usec_net, 1, pkt.paylen);
                 if (!include_udp && pkt.paylen != 0) {
-                    nf_flow_info.first_seq = pkt.seq;
-                    nf_flow_info.first_seq_tv_sec = pkt.sec_net;
-                    nf_flow_info.first_seq_tv_usec = pkt.usec_net; 
+                    nf_flow_info.update_seq(pkt);
                 }
 
                 //if this packet has an ack, add it to the vector that stores acks and timestamps
@@ -466,31 +504,8 @@ std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_flow_table(FILE* fptr, b
             else {
                 NF_Flow_Info& curr_info = it->second;
 
-                //bias: assume current timestamps are right 
-                //handle first time stamp
-                if (pkt.sec_net < curr_info.first_tv_sec ||
-                    (pkt.sec_net == curr_info.first_tv_sec && pkt.usec_net < curr_info.first_tv_usec)) {
-                    curr_info.first_tv_sec = pkt.sec_net;
-                    curr_info.first_tv_usec = pkt.usec_net;
-                }
+                info_update(curr_info, pkt, include_udp);
 
-                //handle second timestamp 
-                if (pkt.sec_net > curr_info.final_tv_sec ||
-                    (pkt.sec_net == curr_info.final_tv_sec && pkt.usec_net > curr_info.final_tv_usec)) {
-                    curr_info.final_tv_sec = pkt.sec_net;
-                    curr_info.final_tv_usec = pkt.usec_net;
-                }
-                //handle rtt timestamp
-                if (!include_udp && pkt.paylen != 0 && (pkt.sec_net < curr_info.first_seq_tv_sec ||
-                    (pkt.sec_net == curr_info.first_seq_tv_sec && pkt.usec_net < curr_info.first_seq_tv_usec))) {
-                    curr_info.first_seq = pkt.seq;
-                    curr_info.first_seq_tv_sec = pkt.sec_net;
-                    curr_info.first_seq_tv_usec = pkt.usec_net; 
-                }
-
-            
-                curr_info.tot_pkts += 1;
-                curr_info.tot_payload_bytes += pkt.paylen;
                 //if this packet has an ack, add it to the vector that stores acks and timestamps
                 if (!include_udp && (pkt.th_flags & TH_ACK) == TH_ACK) {
                     curr_info.ack_timestamps.push_back({pkt.ack, {pkt.sec_net, pkt.usec_net}});
@@ -498,7 +513,6 @@ std::unordered_map<NF_Flow,NF_Flow_Info, NF_Hasher> get_flow_table(FILE* fptr, b
             }
         }
     }
-
     return flow_table;
 }
 
@@ -534,7 +548,7 @@ void print_rtt(FILE* fptr) {
         print_ip(it.first.dip);
         fprintf(stdout, "%d ", it.first.dport);
 
-        //get seuquence number
+        //get sequence number
         uint32_t first_seq = it.second.first_seq;
 
         //lookup reverse direction and get vector 
@@ -569,7 +583,8 @@ void print_rtt(FILE* fptr) {
         for (const auto& pair : ack_timestamps) {
             const auto& ack = pair.first;
             const auto& t_ack = pair.second;
-            if (ack > first_seq && (t_ack.first > it.second.first_seq_tv_sec || (t_ack.first == it.second.first_seq_tv_sec && t_ack.second > it.second.first_seq_tv_usec))) {
+            //Check if ack # > seq# and ack timestamp > seq timestamp
+            if (ack > first_seq && is_later(t_ack.first, t_ack.second,it.second.first_seq_tv_sec, it.second.first_seq_tv_usec)) {
                 ack_found = true;
                 print_ts_diff(it.second.first_seq_tv_sec, it.second.first_seq_tv_usec, t_ack.first, t_ack.second);
                 fprintf(stdout, "\n");
