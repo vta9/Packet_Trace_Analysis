@@ -367,12 +367,17 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
 
                 if (rem_length > 0) {
                     //realloc to increase length
-                    pkt.tcp_hdr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
+                    //pkt.tcp_hdr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
                     //check if malloc worked 
-                    if (pkt.tcp_hdr == nullptr) {
+                    struct tcphdr *temp_ptr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
+                    if (temp_ptr == nullptr) {
+                        // ... failure: free the original pkt.tcp_hdr before exiting
+                        free(pkt.tcp_hdr); 
+                        pkt.tcp_hdr = nullptr;
                         fprintf(stderr, "error: failed to allocate remaining TCP header\n");
                         exit(1);
                     }
+                    pkt.tcp_hdr = temp_ptr;
                     
                     //I still have basically no idea whats going on here 
                     u_int8_t* end_of_tcp = (u_int8_t*) (pkt.tcp_hdr) + TCP_MIN_SIZE;
