@@ -367,19 +367,17 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
 
                 if (rem_length > 0) {
                     //realloc to increase length
-                    //pkt.tcp_hdr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
-                    //check if malloc worked 
                     struct tcphdr *temp_ptr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
                     if (temp_ptr == nullptr) {
-                        // ... failure: free the original pkt.tcp_hdr before exiting
                         free(pkt.tcp_hdr); 
                         pkt.tcp_hdr = nullptr;
                         fprintf(stderr, "error: failed to allocate remaining TCP header\n");
                         exit(1);
                     }
+                    //since temp ptr was set correctly, can safely update tcp_hdr
                     pkt.tcp_hdr = temp_ptr;
-                    
-                    //I still have basically no idea whats going on here 
+
+                    //read into the next 20 bytes of the tcp header (dont rewrite over first tcp_min_size bytes)
                     u_int8_t* end_of_tcp = (u_int8_t*) (pkt.tcp_hdr) + TCP_MIN_SIZE;
                     if (fread(end_of_tcp, 1, rem_length, fptr) != rem_length) {
                         fprintf(stderr, "error: unexpected end of file reading TCP remaining header\n");
@@ -426,7 +424,6 @@ void print_ts_diff(uint32_t sec_i, uint32_t usec_i, uint32_t sec_f, uint32_t use
     }
     fprintf(stdout, "%.6f", (double)sec_diff + (double)usec_diff / U_SEC_CONV_FACTOR);
 }
-
 
 //Prints common address/port part of all outputs
 void print_addr_port(uint32_t sip, uint16_t sport, uint32_t dip, uint16_t dport) {
