@@ -248,7 +248,7 @@ void parseargs (int argc, char* argv []) {
 void validate_arguments() {
     //check that tracefile was given
     if((cmd_line_flags & ARG_TRACE_FILE) != ARG_TRACE_FILE || trace_file_name == NULL) {
-        fprintf(stderr, "error: no trace file given\n");
+        fprintf(stderr, "error: no [-f] and file name given\n");
         exit(1);
     }
     //check that only one mode is given
@@ -370,7 +370,7 @@ std::vector<ParsedPacket> get_packets(FILE* fptr) {
                     pkt.tcp_hdr = (struct tcphdr *) realloc(pkt.tcp_hdr, TCP_MIN_SIZE + rem_length);
                     //check if malloc worked 
                     if (pkt.tcp_hdr == nullptr) {
-                        fprintf(stderr, "error: failed to acocate remaining TCP header\n");
+                        fprintf(stderr, "error: failed to allocate remaining TCP header\n");
                         exit(1);
                     }
                     
@@ -549,7 +549,7 @@ void sort(std::vector<std::pair<uint32_t, std::pair<uint32_t, uint32_t>>>& ack_t
     std::sort(ack_timestamps.begin(), ack_timestamps.end(), [](const auto& a, const auto& b) {
         const auto& a_time = a.second;
         const auto& b_time = b.second;
-        if (a_time.first != b_time.first) { //if secs are not equal, compare by usecs
+        if (a_time.first != b_time.first) { //if secs are not equal, compare by secs
             return a_time.first < b_time.first;
         }
         else {
@@ -614,9 +614,15 @@ int main(int argc, char* argv[]) {
     else if (cmd_line_flags == (ARG_NET_FLOW | ARG_TRACE_FILE)) {
         run_w_file(print_netflow, trace_file_name);
     }
+    else if (cmd_line_flags == ARG_TRACE_FILE) {
+        fprintf(stderr, "error: no mode given\n");
+        exit(1);
+    }
     else {
         fprintf(stderr, "error: no valid input given\n");
         exit(1);
     }
+
+    exit(0);
 
 }
