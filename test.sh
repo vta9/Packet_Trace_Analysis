@@ -33,7 +33,7 @@ run_test() {
     local basename=$(basename "$trace")
 
     if [ ! -f "$expected" ]; then
-        echo "${YELLOW}⚠️  Skipping${RESET} $basename$mode (no expected output found)"
+        echo "${YELLOW} Skipping${RESET} $basename$mode (no expected output found)"
         return
     fi
 
@@ -90,7 +90,7 @@ if [ -f "stress.trace" ]; then
         run_test "-r" "stress.trace" "stress-r.out.txt" true
     fi
 else
-    echo "${YELLOW}⚠️  Skipping stress.trace (file not found)${RESET}"
+    echo "${YELLOW}  Skipping stress.trace (file not found)${RESET}"
 fi
 
 # --- Summary ---
