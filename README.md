@@ -20,9 +20,11 @@ You must specify exactly one mode and a trace file.
 
 Examples:
 
-./proj3 -p -f example.trace
+```
+./proj3 -p -f example.trace 
 ./proj3 -n -f example.trace
 ./proj3 -r -f example.trace
+```
 
 ## Requirements
 
@@ -32,7 +34,7 @@ Uses standard libraries only (no third-party dependencies)
 
 Compiled using the provided Makefile:
 
-make
+``make``
 
 ## Notes
 
