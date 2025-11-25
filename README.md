@@ -1,6 +1,7 @@
 # NetFlow Router Simulator
 
 This project implements a simplified router traffic analyzer that processes a binary packet trace and outputs network statistics in three selectable modes: packet inspection, NetFlow summaries, and RTT estimation.
+
 This project is inspired by CSDS 325/425 Project 3, but extends it with a Python analysis layer using pandas and matplotlib for large-scale RTT and latency analysis.
 
 ## Features
