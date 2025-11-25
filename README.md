@@ -13,7 +13,7 @@ NetFlow Mode (-n) – Aggregates traffic into flows and outputs statistics per 5
 RTT Mode (-r) – Computes the first observed RTT for each TCP flow.
 
 ## Usage
-./proj3 [-p | -n | -r] -f <trace_file>
+``./proj3 [-p | -n | -r] -f <trace_file>``
 
 
 You must specify exactly one mode and a trace file.
